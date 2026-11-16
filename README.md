@@ -1,75 +1,18 @@
-# Databricks Setup
+# dbx-finance-bench-rag
 
-Setup steps for the Databricks CLI and Databricks Asset Bundles (DABs).
+A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings. It is integrated with CI/CD: pushing a branch deploys the Databricks Asset Bundle to `dev`, and merging to `main` deploys it to `prod` (see [doc/setup.md](doc/setup.md#4-cicd-with-github-actions)).
 
-## Prerequisites
+## Ingestion
 
-- macOS or Linux
-- A Databricks workspace
-- [Databricks CLI](https://docs.databricks.com/dev-tools/cli/install.html) v0.218+
+The `ingest_financebench` job downloads all FinanceBench PDFs into a Unity Catalog volume (`/Volumes/<catalog>/<schema>/docs/pdfs/`). It is safe to rerun: files already in the volume are skipped.
 
-## 1. Install the Databricks CLI
+![PDFs dumped into the volume](doc/ingestion/PDF_DUMPS.png)
 
-```bash
-brew tap databricks/tap
-brew trust databricks/tap   # required: Homebrew refuses to load formulas from untrusted taps
-brew install databricks
-databricks --version        # expected: v0.218+ (tested with v1.26.0)
-```
+Details: [doc/ingestion/ingest_raw.md](doc/ingestion/ingest_raw.md)
 
-Without Homebrew:
+## Documentation
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
-```
-
-## 2. Authenticate
-
-```bash
-databricks auth login --host https://<your-workspace>.cloud.databricks.com
-databricks current-user me   # verify
-```
-
-This opens a browser for OAuth and saves a profile in `~/.databrickscfg`.
-
-## 3. Deploy with Databricks Asset Bundles
-
-```bash
-databricks bundle validate                # check the config
-databricks bundle deploy -t dev           # deploy to the dev target
-databricks bundle run <job_name> -t dev   # run a job
-databricks bundle destroy -t dev          # tear down
-```
-
-## 4. CI/CD with GitHub Actions
-
-| Workflow | Trigger | Action |
-| --- | --- | --- |
-| [deploy-dev.yml](.github/workflows/deploy-dev.yml) | Push to any branch except `main` | Validate and deploy to `dev` |
-| [deploy-prod.yml](.github/workflows/deploy-prod.yml) | Push (merge) to `main` | Validate and deploy to `prod` |
-
-### Branch strategy
-
-Trunk-based: `main` is the only long-lived branch and always reflects what is in prod.
-
-1. Branch from `main` using a short-lived name, e.g. `feature/<short-description>` or `fix/<short-description>`.
-2. Every push to the branch deploys the bundle to `dev` (deploy-dev.yml).
-3. Open a pull request into `main`. Review it and confirm the dev deployment works.
-4. Merge to `main`. The merge deploys the bundle to `prod` (deploy-prod.yml).
-5. Delete the feature branch.
-
-Never commit directly to `main`.
-
-### One-time setup
-
-1. In Databricks, create a service principal and an OAuth secret for it (Settings > Identity and access > Service principals). Give it access to the workspace and the catalog/schema the bundle uses.
-2. In GitHub, create two environments, `dev` and `prod` (Settings > Environments). Add required reviewers to `prod` if you want a manual approval gate.
-3. Add these secrets, at repository level or per environment:
-
-| Secret | Value |
+| Doc | Contents |
 | --- | --- |
-| `DATABRICKS_HOST` | `https://<your-workspace>.cloud.databricks.com` |
-| `DATABRICKS_CLIENT_ID` | Service principal application (client) ID |
-| `DATABRICKS_CLIENT_SECRET` | Service principal OAuth secret |
-
-4. Protect `main` (Settings > Branches) so changes only land through pull requests.
+| [doc/setup.md](doc/setup.md) | CLI install, authentication, deploying the bundle, CI/CD, GitHub secrets, Unity Catalog grants |
+| [doc/ingestion/ingest_raw.md](doc/ingestion/ingest_raw.md) | How the raw PDF ingestion works |
