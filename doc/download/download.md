@@ -1,4 +1,6 @@
-# Ingestion: download PDFs
+# Ingestion, part 1: Download
+
+This is the first task, `download`, of the `ingest_financebench` job. The second task loads the PDFs into the bronze table: [part 2, bronze layer](../medallion/bronze/bronze.md).
 
 [src/download.py](../../src/download.py) downloads every PDF from the public
 [patronus-ai/financebench](https://github.com/patronus-ai/financebench) `pdfs/` folder into a Unity Catalog volume.
@@ -27,6 +29,10 @@ The job `ingest_financebench` is defined in [resources/ingest_job.yml](../../res
 databricks bundle deploy -t dev
 databricks bundle run ingest_financebench -t dev
 ```
+
+## Next
+
+The `bronze_pdfs` task runs after this one and loads the PDFs into a Delta table: [part 2, bronze layer](../medallion/bronze/bronze.md).
 
 ## Requirements
 
