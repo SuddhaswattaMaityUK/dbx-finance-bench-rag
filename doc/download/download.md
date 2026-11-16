@@ -1,6 +1,6 @@
-# Ingestion: raw PDFs
+# Ingestion: download PDFs
 
-[src/ingest_raw.py](../../src/ingest_raw.py) downloads every PDF from the public
+[src/download.py](../../src/download.py) downloads every PDF from the public
 [patronus-ai/financebench](https://github.com/patronus-ai/financebench) `pdfs/` folder into a Unity Catalog volume.
 
 ![PDFs dumped into the volume](PDF_DUMPS.png)
@@ -12,6 +12,12 @@
 3. Downloads each PDF to `/Volumes/<catalog>/<schema>/docs/pdfs/`.
 4. Skips any file already in the volume, so reruns are cheap. A rerun that has nothing to do logs `downloaded=0 skipped=<n> failed=0`.
 5. Logs each download as `[i/total] downloaded <name> (<size> MB)`. Failed downloads are logged and reported together at the end, and the job fails.
+
+## Idempotent reload
+
+The load is idempotent: the script was rerun after the first pass had already downloaded everything. It found all 368 PDFs in the repo, skipped every one because it was already in the volume, and downloaded nothing. The run still succeeded.
+
+![Rerun skipped all 368 PDFs](DOWNLOADS_PDF_IDEMPOTENT.png)
 
 ## Running it
 

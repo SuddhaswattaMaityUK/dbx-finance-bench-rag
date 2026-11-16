@@ -8,12 +8,21 @@ resources:
           spec:
             environment_version: "2"
       tasks:
-        - task_key: ingest_raw
+        - task_key: download
           environment_key: default
           spark_python_task:
-            python_file: ../src/ingest_raw.py
+            python_file: ../src/download.py
             parameters:
               - --catalog
               - ${var.catalog}
               - --schema
               - ${var.schema}
+
+        - task_key: bronze_pdfs
+          depends_on:
+            - task_key: download
+          notebook_task:
+            notebook_path: ../src/bronze_pdfs.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}

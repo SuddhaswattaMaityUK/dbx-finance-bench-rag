@@ -3,7 +3,7 @@
 Creates the schema and `docs` volume if they don't exist, then downloads every PDF from the
 patronus-ai/financebench `pdfs/` folder into the volume. Files already in the volume are skipped.
 
-Usage: python ingest_raw.py --catalog <catalog> --schema <schema>
+Usage: python download.py --catalog <catalog> --schema <schema>
 """
 
 import argparse
@@ -18,7 +18,7 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-7s | %(message)s",
     datefmt="%H:%M:%S",
 )
-log = logging.getLogger("ingest_raw")
+log = logging.getLogger("download")
 
 PDF_LIST_URL = "https://api.github.com/repos/patronus-ai/financebench/contents/pdfs"
 
