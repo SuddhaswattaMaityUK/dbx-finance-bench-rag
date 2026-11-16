@@ -1,0 +1,27 @@
+# Databricks Asset Bundle for dbx-finance-bench-rag
+bundle:
+  name: dbx_finance_bench_rag
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog name
+    default: workspace
+  schema:
+    description: Schema for tables and the vector index
+    default: finance_bench_rag
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-9551b733-1e19.cloud.databricks.com
+
+  prod:
+    mode: production
+    workspace:
+      host: https://dbc-9551b733-1e19.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
