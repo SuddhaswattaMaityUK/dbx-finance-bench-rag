@@ -1,6 +1,6 @@
 # dbx-finance-bench-rag
 
-A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings. It is integrated with CI/CD: pushing a branch deploys the Databricks Asset Bundle to `dev`, and merging to `main` deploys it to `prod` (see [doc/setup.md](doc/setup.md#4-cicd-with-github-actions)).
+A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings. It is integrated with CI/CD: pushing a branch deploys the Databricks Asset Bundle to `dev`, and merging to `master` deploys it to `prod` (see [doc/setup.md](doc/setup.md#4-cicd-with-github-actions)).
 
 ## Ingestion
 

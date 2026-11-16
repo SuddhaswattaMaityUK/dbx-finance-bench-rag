@@ -45,20 +45,20 @@ databricks bundle destroy -t dev          # tear down
 
 | Workflow | Trigger | Action |
 | --- | --- | --- |
-| [deploy-dev.yml](../.github/workflows/deploy-dev.yml) | Push to any branch except `main` | Validate and deploy to `dev` |
-| [deploy-prod.yml](../.github/workflows/deploy-prod.yml) | Push (merge) to `main` | Validate and deploy to `prod` |
+| [deploy-dev.yml](../.github/workflows/deploy-dev.yml) | Push to any branch except `master` | Validate and deploy to `dev` |
+| [deploy-prod.yml](../.github/workflows/deploy-prod.yml) | Push (merge) to `master` | Validate and deploy to `prod` |
 
 ### Branch strategy
 
-Trunk-based: `main` is the only long-lived branch and always reflects what is in prod.
+Trunk-based: `master` is the only long-lived branch and always reflects what is in prod.
 
-1. Branch from `main` using a short-lived name, e.g. `feature/<short-description>` or `fix/<short-description>`.
+1. Branch from `master` using a short-lived name, e.g. `feature/<short-description>` or `fix/<short-description>`.
 2. Every push to the branch deploys the bundle to `dev` (deploy-dev.yml).
-3. Open a pull request into `main`. Review it and confirm the dev deployment works.
-4. Merge to `main`. The merge deploys the bundle to `prod` (deploy-prod.yml).
+3. Open a pull request into `master`. Review it and confirm the dev deployment works.
+4. Merge to `master`. The merge deploys the bundle to `prod` (deploy-prod.yml).
 5. Delete the feature branch.
 
-Never commit directly to `main`.
+Never commit directly to `master`.
 
 ### One-time setup
 
@@ -85,4 +85,4 @@ GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
 
    Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `catalog` or `schema` variables in [databricks.yml](../databricks.yml), change them here too.
 
-5. Protect `main` (Settings > Branches) so changes only land through pull requests.
+5. Protect `master` (Settings > Branches) so changes only land through pull requests.

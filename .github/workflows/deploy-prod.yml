@@ -1,10 +1,10 @@
 name: Deploy to prod
 
-# Validate and deploy the bundle to the prod target when changes are merged to main.
+# Validate and deploy the bundle to the prod target when changes are merged to master.
 on:
   push:
     branches:
-      - main
+      - master
 
 concurrency:
   group: deploy-prod
