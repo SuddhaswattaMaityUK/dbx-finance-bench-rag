@@ -11,7 +11,7 @@ resources:
         - task_key: download
           environment_key: default
           spark_python_task:
-            python_file: ../src/ingest/download.py
+            python_file: ../src/bronze/download.py
             parameters:
               - --catalog
               - ${var.catalog}
@@ -26,7 +26,7 @@ resources:
           depends_on:
             - task_key: download
           notebook_task:
-            notebook_path: ../src/ingest/bronze_pdfs.ipynb
+            notebook_path: ../src/bronze/bronze_pdfs.ipynb
             base_parameters:
               catalog: ${var.catalog}
               bronze_schema: ${var.bronze_schema}
@@ -36,7 +36,7 @@ resources:
           depends_on:
             - task_key: bronze_pdfs
           notebook_task:
-            notebook_path: ../src/ingest/split_pdfs.ipynb
+            notebook_path: ../src/bronze/split_pdfs.ipynb
             base_parameters:
               catalog: ${var.catalog}
               bronze_schema: ${var.bronze_schema}

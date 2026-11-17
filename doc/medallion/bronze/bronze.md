@@ -8,7 +8,7 @@ download  -->  /Volumes/<catalog>/<bronze_schema>/docs/pdfs/*.pdf  -->  bronze_p
 
 ![Job run: download then bronze_pdfs, both succeeded](bronze_graph.png)
 
-The code and a step-by-step explanation are in the notebook [src/ingest/bronze_pdfs.ipynb](../../../src/ingest/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and receives `catalog` and `bronze_schema` from the bundle variables in [databricks.yml](../../../databricks.yml).
+The code and a step-by-step explanation are in the notebook [src/bronze/bronze_pdfs.ipynb](../../../src/bronze/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and receives `catalog` and `bronze_schema` from the bundle variables in [databricks.yml](../../../databricks.yml).
 
 ## Table
 
@@ -29,7 +29,7 @@ The first run, shown in the job graph above, read and wrote 368 rows, one per PD
 
 ## The parts: `bronze_pdf_parts`
 
-Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/ingest/split_pdfs.ipynb](../../../src/ingest/split_pdfs.ipynb), logic in [splitting.py](../../../src/ingest/splitting.py)) cuts every PDF with more than `part_pages` pages (50, dev 5) into parts and appends them. A PDF with `part_pages` pages or fewer is one part.
+Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/bronze/split_pdfs.ipynb](../../../src/bronze/split_pdfs.ipynb), logic in [splitting.py](../../../src/bronze/splitting.py)) cuts every PDF with more than `part_pages` pages (50, dev 5) into parts and appends them. A PDF with `part_pages` pages or fewer is one part.
 
 | Column | Meaning |
 | --- | --- |

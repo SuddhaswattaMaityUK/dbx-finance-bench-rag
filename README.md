@@ -43,7 +43,7 @@ resources/
   validate_job.yml          job validate_silver: a separate pipeline that checks the tables
 src/
   common/                   names.py (table and path names of both layers, the insert helper)
-  ingest/                   BRONZE: download.py, bronze_pdfs.ipynb, split_pdfs.ipynb
+  bronze/                   BRONZE: download.py, bronze_pdfs.ipynb, split_pdfs.ipynb
                             splitting.py (cut a PDF into parts), bronze_tables.py (the parts table)
   silver/                   SILVER: parse_pdfs.ipynb, retry_parses.ipynb, convert_pages.ipynb
                             checks.py (checks on parser and model output, plain Python)
@@ -125,7 +125,7 @@ flowchart TD
     PG --> V["silver_documents view<br/>adds page markers and ---"]
 ```
 
-1. **Split (bronze).** Every PDF with more than 50 pages is cut into parts of at most 50 pages ([splitting.py](src/ingest/splitting.py)), and the bytes of each part go to `bronze_pdf_parts` with the part's `page_offset`. Cutting does not change the content, so the parts are still raw bytes and belong in bronze. Silver only ever sees parts. The real page number of a page is `page_offset + page_id + 1`, so pages, log and documents keep the original PDF's page numbers.
+1. **Split (bronze).** Every PDF with more than 50 pages is cut into parts of at most 50 pages ([splitting.py](src/bronze/splitting.py)), and the bytes of each part go to `bronze_pdf_parts` with the part's `page_offset`. Cutting does not change the content, so the parts are still raw bytes and belong in bronze. Silver only ever sees parts. The real page number of a page is `page_offset + page_id + 1`, so pages, log and documents keep the original PDF's page numbers.
 2. **Parse (stream).** `ai_parse_document` runs once per part, two files per micro-batch. `check_parse` is a short Python function: a parse is good if it has elements and no page errors. A good parse goes to `silver_parsed`. A bad one goes to `silver_log`, marked retryable (temporary page errors) or not (a failed conversion).
 3. **Retry.** Retryable parse failures are parsed again with the same function, one part at a time, cheapest first, with a pause between parts. A retry costs at most 50 parse pages. Two failures in a row stop the retries for the run. After `max_attempts` a part is left alone, and it stays visible in `silver_failures`.
 4. **Convert, one page per `ai_query` call.** Every page of a parsed part that is not in `silver_pages` is converted, in chunks of 200 pages that are each saved. An error or an empty answer is logged, and anything else is stored.
