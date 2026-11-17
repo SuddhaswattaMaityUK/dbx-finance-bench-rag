@@ -123,7 +123,7 @@ These are real problems hit while building and testing the layer.
 | 8 | The table already existed with fewer columns | `CREATE TABLE IF NOT EXISTS` does not add columns | `ALTER TABLE ... ADD COLUMNS` when `parts` is missing |
 | 9 | Some PDFs cannot be parsed at all: `ai_parse_document` rejects PDFs over 500 pages and sometimes fails a conversion | Such a document has no elements, so it never produces a part. In the first full run these were picked first in every batch, a batch stored nothing and the loop stopped with 189 convertible documents left | Step 3 only picks documents with parsed elements, and lists the skipped ones with the parser's reason |
 | 10 | Calls could run one after another when few partitions held the parts | Slow conversion | `repartition(32)` spreads the calls over the workers |
-| 11 | The model repeats or skips `<!-- page N -->` markers (found by checking all 359 documents: 151 had a different marker count than pages, off by 1 to 11) | Page numbers in the Markdown cannot be trusted | Validate every part's markers against its page numbers. Redo a bad part one page per call and stitch it in code. A part that still fails is not stored and is retried |
+| 11 | The model repeats or skips `<!-- page N -->` markers (found by checking all 359 documents: 151 had a different marker count than pages, off by 1 to 11) | Page numbers in the Markdown cannot be trusted | Validate every part's markers against its page numbers. Redo a bad part one page per call, where the marker is added in code (the model sometimes mistook the printed page number for a marker, which made 10 parts fail even page by page), and stitch the pages in code |
 | 12 | `ai_parse_document` failed on some pages: `Request rate limit exceeded` (2,815 pages in 53 documents) and `Internal error` (365 pages in 11 documents). Found with the inspection notebook | About 6% of the pages (3,180 of 49,965 in the converted documents) have no content, so they are missing from the Markdown. PepsiCo 2018 lost 278 of 479 pages | Not fixed yet. Planned: re-parse the affected documents with lower parallelism and rerun their conversion |
 
 ### Results
@@ -150,11 +150,14 @@ Quality check on three filings in the dev job. Every part completed, and each Ma
 | Not parsable by `ai_parse_document` | 9 (7 over the 500-page limit, 2 failed conversions) |
 | Parts converted with `ai_query` | 15,660 |
 | Failed `ai_query` calls | 0 |
+| Documents with wrong or missing page markers | 0 (was 151) |
 | Average Markdown size per filing | about 467,000 characters |
 | Largest Markdown document | about 1.7 million characters |
 | Time of the last run (189 documents, parallel) | about 22 minutes |
 
-The last run's batch log:
+**Page marker check (after the validation fix).** All 359 converted documents were checked: none has a part with wrong markers, and none has a different number of `<!-- page N -->` markers than pages with content. Before the fix, 162 documents had at least one bad part (369 of 15,660 parts) and 151 had a different marker count. The repair redid only those 369 parts. It took 5 batches, the page-by-page fallback fixed most, and the last 10 parts needed the marker added in code.
+
+The batch log of the full run (before the marker check):
 
 ```
 batch 1: 2731 parts stored, 0 failed, 139 documents left
