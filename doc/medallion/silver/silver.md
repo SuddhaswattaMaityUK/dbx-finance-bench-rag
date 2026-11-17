@@ -105,7 +105,8 @@ These are real problems hit while building and testing the layer.
 | 6 | The configured model endpoint did not exist, and `ai_query` rejected `max_tokens` above the endpoint's cap | The job failed in step 3 | List the endpoints with `databricks serving-endpoints list`; use `databricks-qwen3-next-80b-a3b-instruct` with `max_tokens` 10000 |
 | 7 | `ai_query` with `failOnError => false` returns `result` and `errorMessage` | Reading a field called `response` failed with `FIELD_NOT_FOUND` | Read `r.result` |
 | 8 | The table already existed with fewer columns | `CREATE TABLE IF NOT EXISTS` does not add columns | `ALTER TABLE ... ADD COLUMNS` when `parts` is missing |
-| 9 | Calls could run one after another if few partitions held the parts | Slow step 3 | `repartition(32)` spreads the calls over the workers |
+| 9 | Some PDFs cannot be parsed at all: `ai_parse_document` rejects PDFs over 500 pages (for example the PepsiCo 10-Ks) and sometimes fails a conversion | Such a document has no elements, so it never produces a part. In the first full run these were picked first in every batch, a batch stored nothing and the loop stopped with 189 convertible documents left | Step 3 only picks documents that have parsed elements, and lists the skipped ones with the parser's reason |
+| 10 | Calls could run one after another if few partitions held the parts | Slow step 3 | `repartition(32)` spreads the calls over the workers |
 
 ## Verified results
 
@@ -149,6 +150,7 @@ Other operations:
 
 - **Cost:** `ai_parse_document` and `ai_query` are billed per use. A 150-page filing is about 50 `ai_query` calls, so the full set is on the order of 15,000 calls.
 - **Model-written separators:** the `<!-- page N -->` markers inside a part are written by the model. Between parts they are added in code. A count check against the parsed pages is the way to verify them.
+- **Unparseable PDFs:** 9 of 368 filings (7 over the 500-page limit, 2 failed conversions) have no parsed content and no `markdown`. Handling them needs the PDF split into smaller files before parsing.
 - **Changed or deleted PDFs:** not handled. Bronze tracks files by path, and silver keeps rows of deleted files. See [happy_unhappy_path.md](happy_unhappy_path.md).
 - **Failure reasons are not stored:** failed parts are counted in the log but their error messages are not saved.
 - **Next layer:** gold chunks the Markdown (for example by heading or page) and creates embeddings for retrieval.
