@@ -31,6 +31,38 @@ The three tasks run in order in the job `ingest_financebench`:
 
 Every task is **safe to rerun**: each one remembers what it has already done and only processes what is new.
 
+## Repository layout
+
+```
+databricks.yml              bundle: variables and the dev and prod targets
+resources/
+  ingest_job.yml            job ingest_financebench: download, bronze, silver_parse, silver_retry, silver_convert
+  validate_job.yml          job validate_silver: a separate pipeline that checks the tables
+src/
+  ingest/                   download.py, bronze_pdfs.ipynb
+  silver/                   parse_pdfs.ipynb, retry_parses.ipynb, convert_pages.ipynb
+                            checks.py (checks on parser and model output, plain Python)
+                            tables.py (table names and definitions), parsing.py (parse and file a PDF)
+  validate/                 validate_silver.ipynb
+  tools/                    inspect_parsed.ipynb (look at one parsed document)
+tests/                      test_checks.py (pytest, no Databricks needed)
+doc/                        setup, one page per layer
+.github/workflows/          deploy-dev, deploy-prod, test
+```
+
+## Environments: testing never touches prod
+
+The dev and prod targets use **different schemas**, so tables, the volume and the stream checkpoints are separate. Dev also downloads only five short PDFs and has small budgets, so a test run is cheap.
+
+| | dev (every push to a branch) | prod (merge to `master`) |
+| --- | --- | --- |
+| Schema | `workspace.finance_bench_rag_dev` | `workspace.finance_bench_rag` |
+| PDFs | 5 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
+| Retry budget | 200 pages per run | 1000 pages per run |
+| Conversion budget | 300 pages per run | 1000 pages per run |
+
+The values are bundle variables in [databricks.yml](databricks.yml). The validation job can also check the prod data from dev without writing to it: run it with the `schema` parameter set to `finance_bench_rag`. It only reads.
+
 ## 1. Download
 
 Downloads all FinanceBench PDFs into the volume `/Volumes/<catalog>/<schema>/docs/pdfs/`. Files already in the volume are skipped.
@@ -49,9 +81,9 @@ Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 
 ## 3. Silver: PDFs to Markdown
 
-Turns each filing into **one Markdown document** that keeps its structure: titles, headings, plain text, tables, page headers and footers, and page separators. The code, with an explanation of every stage, is in [src/silver_pdfs.ipynb](src/silver_pdfs.ipynb).
+Turns each filing into **one Markdown document** that keeps its structure: titles, headings, plain text, tables, page headers and footers, and page separators. The code is in [src/silver/](src/silver/): three small notebooks (`parse_pdfs`, `retry_parses`, `convert_pages`, each with an explanation of its stage and able to run on its own) and three short Python modules. The checks on parser and model output are in [src/silver/checks.py](src/silver/checks.py), and they are unit-tested.
 
-The design follows four rules, and the notebook is about 240 lines of code:
+The design follows four rules:
 
 1. **Check every result, and keep the bad ones apart.** A parse that is incomplete, or a page that did not convert, never goes into the good tables. It goes to `silver_log`, with the reason and whether a retry makes sense.
 2. **Every stage can run again.** Each stage works out what is still missing and does only that. A rerun, a retry and a recovery after a crash are the same code, and nothing already stored is paid for twice.
@@ -152,7 +184,7 @@ SELECT * FROM silver_log WHERE path LIKE '%PEPSICO_2018%';         -- the histor
 SELECT path, markdown FROM silver_documents WHERE path LIKE '%BOEING_2022%';
 ```
 
-The helper notebook [src/inspect_parsed.ipynb](src/inspect_parsed.ipynb) shows one PDF page with a coloured box on every parsed element, the parsed text next to the Markdown, and which pages with content have no Markdown. It can also list the documents with missing pages.
+The helper notebook [src/tools/inspect_parsed.ipynb](src/tools/inspect_parsed.ipynb) shows one PDF page with a coloured box on every parsed element, the parsed text next to the Markdown, and which pages with content have no Markdown. It can also list the documents with missing pages.
 
 ### Results
 
@@ -182,24 +214,26 @@ _The numbers after the new design's first runs: to be added._
 ## Run it
 
 ```bash
-databricks bundle deploy -t dev
-databricks bundle run ingest_financebench -t dev
+databricks bundle deploy -t dev                       # CI does this on every push
+databricks bundle run ingest_financebench -t dev      # download, bronze, silver (parse, retry, convert)
+databricks bundle run validate_silver -t dev          # check the tables (a separate pipeline)
+python -m pytest                                      # unit tests, no Databricks needed
 ```
 
-Silver parameters (notebook widgets):
+Silver parameters (notebook widgets, set by the bundle variables):
 
-| Widget | Default | Meaning |
-| --- | --- | --- |
-| `catalog`, `schema` | `workspace`, `finance_bench_rag` | From the bundle variables |
-| `endpoint` | `databricks-qwen3-next-80b-a3b-instruct` | Model endpoint used by `ai_query` |
-| `max_files_per_batch` | `2` | Parse stream: bronze files per micro-batch |
-| `max_attempts` | `3` | A PDF or page is given up on after this many failed attempts |
-| `retry_page_budget` | `1000` | PDF pages that retrying failed parses may cost in one run. `0` = no retries |
-| `retry_pause_seconds` | `10` | Pause between retried PDFs |
-| `max_pages_per_run` | `1000` | Pages converted with `ai_query` in one run. `0` = no conversion |
-| `pages_per_chunk` | `200` | Pages per save point while converting |
+| Widget | Task | Default | Meaning |
+| --- | --- | --- | --- |
+| `catalog`, `schema` | all | `workspace`, per target | From the bundle variables |
+| `max_files_per_batch` | `silver_parse` | `2` | PDFs parsed at once by the stream |
+| `max_attempts` | `silver_retry`, `silver_convert` | `3` | A PDF or page is given up on after this many failed attempts |
+| `retry_page_budget` | `silver_retry` | `1000` (dev `200`) | PDF pages that retries may cost in one run. `0` = no retries |
+| `retry_pause_seconds` | `silver_retry` | `10` | Pause between retried PDFs |
+| `endpoint` | `silver_convert` | `databricks-qwen3-next-80b-a3b-instruct` | Model endpoint used by `ai_query` |
+| `max_pages_per_run` | `silver_convert` | `1000` (dev `300`) | Pages converted in one run. `0` = no conversion |
+| `pages_per_chunk` | `silver_convert` | `200` | Pages per save point |
 
-To look before you spend, run with `retry_page_budget` and `max_pages_per_run` set to `0`: the parse step skips what is recorded, and nothing is retried or converted.
+To look before you spend, run with `retry_page_budget` and `max_pages_per_run` set to `0`.
 
 - **Rerun or redeploy:** safe. The stream skips recorded PDFs, the retry only takes open retryable failures, and the conversion only takes missing pages.
 - **Redo the Markdown with a new prompt:** `DELETE FROM silver_pages`, then run. The parses are kept.
@@ -214,5 +248,7 @@ To look before you spend, run with `retry_page_budget` and `max_pages_per_run` s
 | [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md) | The bronze table and the Auto Loader load |
 | [doc/medallion/silver/silver.md](doc/medallion/silver/silver.md) | Silver operations: where to look, what to do when something is open |
 | [doc/medallion/silver/happy_unhappy_path.md](doc/medallion/silver/happy_unhappy_path.md) | Edge cases and open decisions for silver |
-| [src/silver_pdfs.ipynb](src/silver_pdfs.ipynb) | The silver notebook, with an explanation cell for every stage |
-| [src/inspect_parsed.ipynb](src/inspect_parsed.ipynb) | Helper to inspect a parsed document: page view with element boxes, parsed text vs Markdown, marker check |
+| [src/silver/](src/silver/) | The silver notebooks and modules, with an explanation cell for every stage |
+| [src/validate/validate_silver.ipynb](src/validate/validate_silver.ipynb) | The separate validation pipeline: integrity checks on the tables, and what is still open |
+| [tests/test_checks.py](tests/test_checks.py) | Unit tests for the checks |
+| [src/tools/inspect_parsed.ipynb](src/tools/inspect_parsed.ipynb) | Helper to inspect a parsed document: page view with element boxes, parsed text vs Markdown, marker check |

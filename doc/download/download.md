@@ -2,12 +2,14 @@
 
 This is the first task, `download`, of the `ingest_financebench` job. The second task loads the PDFs into the bronze table: [part 2, bronze layer](../medallion/bronze/bronze.md).
 
-[src/download.py](../../src/download.py) downloads every PDF from the public
+[src/ingest/download.py](../../src/ingest/download.py) downloads every PDF from the public
 [patronus-ai/financebench](https://github.com/patronus-ai/financebench) `pdfs/` folder into a Unity Catalog volume.
 
 ![PDFs dumped into the volume](PDF_DUMPS.png)
 
 ## What it does
+
+With `--match <regex>` and `--limit <n>` it downloads only a sample: the dev target uses `--match EARNINGS --limit 5` (five short earnings releases) so that testing is cheap. Prod downloads all 368.
 
 1. Creates the schema and the `docs` volume if they don't exist (`IF NOT EXISTS`).
 2. Lists the PDFs in the repo with one GitHub API call.

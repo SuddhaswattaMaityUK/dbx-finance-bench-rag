@@ -3,12 +3,16 @@
 Creates the schema and `docs` volume if they don't exist, then downloads every PDF from the
 patronus-ai/financebench `pdfs/` folder into the volume. Files already in the volume are skipped.
 
-Usage: python download.py --catalog <catalog> --schema <schema>
+Usage: python download.py --catalog <catalog> --schema <schema> [--match <regex>] [--limit <n>]
+
+`--match` keeps only the PDFs whose file name matches the regex, and `--limit` keeps only the first n of
+those (0 = all). Dev uses them to download a small sample.
 """
 
 import argparse
 import logging
 import os
+import re
 
 import requests
 from pyspark.sql import SparkSession
@@ -27,6 +31,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--schema", required=True)
+    parser.add_argument("--match", default=".*", help="only PDFs whose file name matches this regex")
+    parser.add_argument("--limit", type=int, default=0, help="only the first n PDFs (0 = all)")
     args = parser.parse_args()
     catalog, schema = args.catalog, args.schema
 
@@ -44,6 +50,10 @@ def main() -> None:
     resp.raise_for_status()
     pdfs = [(f["name"], f["download_url"]) for f in resp.json() if f["name"].lower().endswith(".pdf")]
     log.info("Found %d PDFs in repo", len(pdfs))
+    pdfs = [(name, url) for name, url in pdfs if re.search(args.match, name)]
+    if args.limit:
+        pdfs = pdfs[: args.limit]
+    log.info("Downloading %d PDFs (match=%r, limit=%d)", len(pdfs), args.match, args.limit)
 
     downloaded, skipped, failed = 0, 0, []
     for i, (name, url) in enumerate(pdfs, start=1):

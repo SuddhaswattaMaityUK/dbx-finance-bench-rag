@@ -83,6 +83,12 @@ GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
   ON SCHEMA workspace.finance_bench_rag TO `<client-id>`;
 ```
 
+   The dev target writes to its own schema, `finance_bench_rag_dev`, which the `download` task creates (`CREATE SCHEMA IF NOT EXISTS`). For that, the service principal also needs `CREATE SCHEMA` on the catalog:
+
+   ```sql
+   GRANT CREATE SCHEMA ON CATALOG workspace TO `<client-id>`;
+   ```
+
    Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `catalog` or `schema` variables in [databricks.yml](../databricks.yml), change them here too.
 
 5. Protect `master` (Settings > Branches) so changes only land through pull requests.
