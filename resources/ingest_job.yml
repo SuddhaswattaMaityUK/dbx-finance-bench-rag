@@ -11,12 +11,12 @@ resources:
         - task_key: download
           environment_key: default
           spark_python_task:
-            python_file: ../src/ingest/download.py
+            python_file: ../src/bronze/download.py
             parameters:
               - --catalog
               - ${var.catalog}
-              - --schema
-              - ${var.schema}
+              - --bronze-schema
+              - ${var.bronze_schema}
               - --match
               - ${var.pdf_match}
               - --limit
@@ -26,30 +26,32 @@ resources:
           depends_on:
             - task_key: download
           notebook_task:
-            notebook_path: ../src/ingest/bronze_pdfs.ipynb
+            notebook_path: ../src/bronze/bronze_pdfs.ipynb
             base_parameters:
               catalog: ${var.catalog}
-              schema: ${var.schema}
+              bronze_schema: ${var.bronze_schema}
 
-        # Silver: cut the long PDFs into parts, parse and check, retry the failed parses, convert the pages. Each task can run on its own.
-        - task_key: silver_split
+        # Bronze, second step: cut the long PDFs into parts of at most part_pages pages.
+        - task_key: bronze_split
           depends_on:
             - task_key: bronze_pdfs
           notebook_task:
-            notebook_path: ../src/silver/split_pdfs.ipynb
+            notebook_path: ../src/bronze/split_pdfs.ipynb
             base_parameters:
               catalog: ${var.catalog}
-              schema: ${var.schema}
+              bronze_schema: ${var.bronze_schema}
               part_pages: ${var.part_pages}
 
+        # Silver: parse and check the parts, retry the failed parses, convert the pages. Each task can run on its own.
         - task_key: silver_parse
           depends_on:
-            - task_key: silver_split
+            - task_key: bronze_split
           notebook_task:
             notebook_path: ../src/silver/parse_pdfs.ipynb
             base_parameters:
               catalog: ${var.catalog}
-              schema: ${var.schema}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
 
         - task_key: silver_retry
           depends_on:
@@ -58,7 +60,8 @@ resources:
             notebook_path: ../src/silver/retry_parses.ipynb
             base_parameters:
               catalog: ${var.catalog}
-              schema: ${var.schema}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
 
         - task_key: silver_convert
           depends_on:
@@ -67,4 +70,5 @@ resources:
             notebook_path: ../src/silver/convert_pages.ipynb
             base_parameters:
               catalog: ${var.catalog}
-              schema: ${var.schema}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}

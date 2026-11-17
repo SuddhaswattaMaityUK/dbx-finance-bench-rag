@@ -2,7 +2,7 @@
 
 This is the first task, `download`, of the `ingest_financebench` job. The second task loads the PDFs into the bronze table: [part 2, bronze layer](../medallion/bronze/bronze.md).
 
-[src/ingest/download.py](../../src/ingest/download.py) downloads every PDF from the public
+[src/bronze/download.py](../../src/bronze/download.py) downloads every PDF from the public
 [patronus-ai/financebench](https://github.com/patronus-ai/financebench) `pdfs/` folder into a Unity Catalog volume.
 
 ![PDFs dumped into the volume](PDF_DUMPS.png)
@@ -25,7 +25,7 @@ The load is idempotent: the script was rerun after the first pass had already do
 
 ## Running it
 
-The job `ingest_financebench` is defined in [resources/ingest_job.yml](../../resources/ingest_job.yml). It runs on serverless compute and receives `--catalog` and `--schema` from the bundle variables in [databricks.yml](../../databricks.yml).
+The job `ingest_financebench` is defined in [resources/ingest_job.yml](../../resources/ingest_job.yml). It runs on serverless compute and receives `--catalog` and `--bronze-schema` from the bundle variables in [databricks.yml](../../databricks.yml).
 
 ```bash
 databricks bundle deploy -t dev

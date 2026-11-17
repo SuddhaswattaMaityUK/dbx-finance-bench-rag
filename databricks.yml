@@ -9,8 +9,14 @@ variables:
   catalog:
     description: Unity Catalog catalog name
     default: workspace
-  schema:
-    description: Schema for the tables, the volume and the checkpoints. Each target has its own, so testing in dev never touches prod data
+  bronze_schema:
+    description: Schema of the bronze layer (the volume, bronze_pdfs, bronze_pdf_parts). Each target has its own, so testing in dev never touches prod data
+    default: finance_bench_bronze
+  silver_schema:
+    description: Schema of the silver layer (parsed parts, pages, log, documents)
+    default: finance_bench_silver
+  old_schema:
+    description: The schema that held everything before the layers had one each. Only the one-off migration job reads it
     default: finance_bench_rag
   pdf_match:
     description: Download only the PDFs whose file name matches this regex
@@ -23,19 +29,21 @@ variables:
     default: "50"
 
 targets:
-  # dev: its own schema, a small sample of short PDFs. Safe to break.
+  # dev: its own schemas, a small sample of short PDFs. Safe to break.
   dev:
     mode: development
     default: true
     variables:
-      schema: finance_bench_rag_dev
+      bronze_schema: finance_bench_bronze_dev
+      silver_schema: finance_bench_silver_dev
+      old_schema: finance_bench_rag_dev
       pdf_match: EARNINGS
-      pdf_limit: "15"
+      pdf_limit: "20"
       part_pages: "5"  # the dev PDFs are short: a small part size makes the split run
     workspace:
       host: https://dbc-9551b733-1e19.cloud.databricks.com
 
-  # prod: all the PDFs, in the real schema.
+  # prod: all the PDFs, in the real schemas.
   prod:
     mode: production
     workspace:

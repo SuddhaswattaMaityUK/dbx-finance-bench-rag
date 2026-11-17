@@ -1,0 +1,16 @@
+resources:
+  jobs:
+    migrate_to_layer_schemas:
+      name: migrate_to_layer_schemas
+      # One-off: copy the silver tables from the old single schema into the bronze and silver schemas, so nothing
+      # that was paid for is parsed or converted again. Run it once per target, before the first ingest run in the
+      # new layout, then delete this file. See doc/migration.md.
+      tasks:
+        - task_key: move_to_layer_schemas
+          notebook_task:
+            notebook_path: ../src/migrate/move_to_layer_schemas.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              old_schema: ${var.old_schema}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
