@@ -57,13 +57,13 @@ doc/                        setup, one page per layer
 
 ## Environments: testing never touches prod
 
-Each layer has its own schema, and dev and prod use **different schemas**, so tables, the volume and the stream checkpoints are separate. Dev also downloads only 15 short PDFs, so a test run is cheap.
+Each layer has its own schema, and dev and prod use **different schemas**, so tables, the volume and the stream checkpoints are separate. Dev also downloads only 20 short PDFs, so a test run is cheap.
 
 | | dev (every push to a branch) | prod (merge to `master`) |
 | --- | --- | --- |
 | Bronze schema | `workspace.finance_bench_bronze_dev` | `workspace.finance_bench_bronze` |
 | Silver schema | `workspace.finance_bench_silver_dev` | `workspace.finance_bench_silver` |
-| PDFs | 15 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
+| PDFs | 20 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
 
 The values are bundle variables in [databricks.yml](databricks.yml). The validation job can also check the prod data from dev without writing to it: run it with the `bronze_schema` and `silver_schema` parameters set to the prod schemas. It only reads.
 
