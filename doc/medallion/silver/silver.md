@@ -88,8 +88,9 @@ Pages are separated by a blank line, `---`, a blank line and `<!-- page N -->`.
 1. **Split.** The elements are numbered by page and grouped into parts of `pages_per_call` pages (default 3): pages 1-3 are part 0, pages 4-6 are part 1, and so on. A page is never cut in half.
 2. **Convert.** Each part goes to `ai_query` with a prompt that keeps all content and asks for headings (`#`, `##`), plain text, Markdown tables, italic page headers/footers and page markers. `temperature` is 0. The calls run in parallel across the cluster.
 3. **Store.** Successful parts are merged into `parts`. Failed parts are not stored.
-4. **Join.** When a document has all `num_parts` parts, `markdown` is built from them in order, with `---` between parts (added in code, so it is exact).
-5. **Repeat.** The cell works through the documents in batches of `docs_per_batch` (default 50), saving each batch before starting the next. One job run converts every document.
+4. **Validate.** The markers in each result must be exactly the part's page numbers. A part that fails is redone one page per call and stitched together in code. A page that still fails is not stored and is retried later.
+5. **Join.** When a document has all `num_parts` parts, `markdown` is built from them in order, with `---` between parts (added in code, so it is exact).
+6. **Repeat.** The cell works through the documents in batches of `docs_per_batch` (default 50), saving each batch before starting the next. One job run converts every document.
 
 ## Challenges and solutions
 
@@ -107,6 +108,7 @@ These are real problems hit while building and testing the layer.
 | 8 | The table already existed with fewer columns | `CREATE TABLE IF NOT EXISTS` does not add columns | `ALTER TABLE ... ADD COLUMNS` when `parts` is missing |
 | 9 | Some PDFs cannot be parsed at all: `ai_parse_document` rejects PDFs over 500 pages (for example the PepsiCo 10-Ks) and sometimes fails a conversion | Such a document has no elements, so it never produces a part. In the first full run these were picked first in every batch, a batch stored nothing and the loop stopped with 189 convertible documents left | Step 3 only picks documents that have parsed elements, and lists the skipped ones with the parser's reason |
 | 10 | Calls could run one after another if few partitions held the parts | Slow step 3 | `repartition(32)` spreads the calls over the workers |
+| 11 | The model repeats or skips `<!-- page N -->` markers (151 of 359 documents had a different marker count than pages) | Page numbers in the Markdown cannot be trusted | Validate each part's markers, redo bad parts page by page, stitch in code |
 
 ## Verified results
 
@@ -149,6 +151,7 @@ Other operations:
 ## Limits and next steps
 
 - **Cost:** `ai_parse_document` and `ai_query` are billed per use. A 150-page filing is about 50 `ai_query` calls, so the full set is on the order of 15,000 calls.
+- **Inspecting documents:** [src/inspect_parsed.ipynb](../../../src/inspect_parsed.ipynb) shows the PDF page with the parsed element boxes, the parsed text next to the Markdown, and a marker check.
 - **Model-written separators:** the `<!-- page N -->` markers inside a part are written by the model. Between parts they are added in code. A count check against the parsed pages is the way to verify them.
 - **Unparseable PDFs:** 9 of 368 filings (7 over the 500-page limit, 2 failed conversions) have no parsed content and no `markdown`. Handling them needs the PDF split into smaller files before parsing.
 - **Changed or deleted PDFs:** not handled. Bronze tracks files by path, and silver keeps rows of deleted files. See [happy_unhappy_path.md](happy_unhappy_path.md).

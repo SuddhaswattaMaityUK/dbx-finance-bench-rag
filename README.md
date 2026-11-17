@@ -63,8 +63,9 @@ Turns each filing into **one Markdown document** that keeps its structure: title
 1. **Parse.** A stream reads `bronze_pdfs` and runs `ai_parse_document` (version 2.0) on each new PDF. The result lists typed elements (title, section header, text, table, figure, page header, page footer, ...), each with its page. A streaming checkpoint means a PDF is parsed once, however often the job runs.
 2. **Split.** Each parsed document is split into **parts of 3 pages**, because the model can return at most 10,000 tokens per call (see the first challenge below).
 3. **Convert.** Each part goes to `ai_query` with a prompt that asks for headings (`#`, `##`), plain text, Markdown tables, italic page headers and footers, and `<!-- page N -->` markers, with nothing summarized or reworded. The calls run in parallel on the cluster.
-4. **Store and join.** Successful parts are saved in `parts`. When a document has all its parts, they are joined in order with `---` into `markdown`.
-5. **Repeat in batches.** The cell works through the documents 50 at a time, saving each batch before starting the next, so **one job run converts everything** and a failure loses at most one batch.
+4. **Validate.** The model sometimes repeats or skips a `<!-- page N -->` marker, so each result's markers are checked against the part's page numbers. A part that fails is redone one page per call (where a single marker is easy to get right) and stitched together in code.
+5. **Store and join.** Successful parts are saved in `parts`. When a document has all its parts, they are joined in order with `---` into `markdown`.
+6. **Repeat in batches.** The cell works through the documents 50 at a time, saving each batch before starting the next, so **one job run converts everything** and a failure loses at most one batch.
 
 ![The batch loop and its log](doc/medallion/silver/document_batches.png)
 
@@ -122,6 +123,7 @@ These are real problems hit while building and testing the layer.
 | 8 | The table already existed with fewer columns | `CREATE TABLE IF NOT EXISTS` does not add columns | `ALTER TABLE ... ADD COLUMNS` when `parts` is missing |
 | 9 | Some PDFs cannot be parsed at all: `ai_parse_document` rejects PDFs over 500 pages and sometimes fails a conversion | Such a document has no elements, so it never produces a part. In the first full run these were picked first in every batch, a batch stored nothing and the loop stopped with 189 convertible documents left | Step 3 only picks documents with parsed elements, and lists the skipped ones with the parser's reason |
 | 10 | Calls could run one after another when few partitions held the parts | Slow conversion | `repartition(32)` spreads the calls over the workers |
+| 11 | The model repeats or skips `<!-- page N -->` markers (found by checking all 359 documents: 151 had a different marker count than pages, off by 1 to 11) | Page numbers in the Markdown cannot be trusted | Validate every part's markers against its page numbers. Redo a bad part one page per call and stitch it in code. A part that still fails is not stored and is retried |
 
 ### Results
 
@@ -166,11 +168,22 @@ The nine skipped filings are listed with the parser's reason at the end of the s
 
 - **Cost:** `ai_parse_document` and `ai_query` are billed per use. A 150-page filing is about 50 `ai_query` calls, so the full set is on the order of 15,000 calls.
 - **Unparseable PDFs:** 9 of 368 filings (7 over the 500-page limit, 2 failed conversions) have no `markdown`, so silver covers 359 filings. Handling them means splitting the PDF into smaller files before parsing.
-- **Model-written separators:** the `<!-- page N -->` markers inside a part are written by the model. Between parts they are added in code. A count of the markers against the parsed pages verifies them.
+- **Model-written separators:** the `<!-- page N -->` markers inside a part are written by the model, and are checked after the fact (see challenge 11). The `---` between parts is added in code. The inspection notebook lists every document whose markers do not match its pages.
 - **Changed or deleted PDFs:** not handled. Bronze tracks files by path, and silver keeps rows of deleted files. See [happy_unhappy_path.md](doc/medallion/silver/happy_unhappy_path.md).
 - **Failure reasons are not stored:** failed parts are counted in the log but their error messages are not saved.
 - **Table accuracy:** table cells were checked by eye on a sample, not measured against the PDF.
 - **Next layer:** gold chunks the Markdown (for example by heading or page) and creates embeddings.
+
+### Inspecting a parsed document
+
+[src/inspect_parsed.ipynb](src/inspect_parsed.ipynb) is a helper notebook, outside the job, for looking at what the parser produced. For one PDF it shows:
+
+- an overview (pages, element types, parser errors);
+- the PDF page with a coloured box around every parsed element, by type and reading order, like the Databricks parse viewer;
+- the page's elements as a table;
+- the parsed text next to the Markdown for the same page;
+- a check of the page markers (missing, repeated, out of range);
+- optionally, the marker and size check for all documents, to find the ones to look at.
 
 ## Run it
 
@@ -203,3 +216,4 @@ Silver parameters (notebook widgets):
 | [doc/medallion/silver/silver.md](doc/medallion/silver/silver.md) | Silver in more detail: stages, parameters, operations |
 | [doc/medallion/silver/happy_unhappy_path.md](doc/medallion/silver/happy_unhappy_path.md) | Edge cases and open decisions for silver |
 | [src/silver_pdfs.ipynb](src/silver_pdfs.ipynb) | The silver notebook, with an explanation cell for every stage |
+| [src/inspect_parsed.ipynb](src/inspect_parsed.ipynb) | Helper to inspect a parsed document: page view with element boxes, parsed text vs Markdown, marker check |
