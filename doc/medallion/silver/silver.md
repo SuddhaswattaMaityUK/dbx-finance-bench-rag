@@ -109,7 +109,48 @@ These are real problems hit while building and testing the layer.
 | 9 | Some PDFs cannot be parsed at all: `ai_parse_document` rejects PDFs over 500 pages (for example the PepsiCo 10-Ks) and sometimes fails a conversion | Such a document has no elements, so it never produces a part. In the first full run these were picked first in every batch, a batch stored nothing and the loop stopped with 189 convertible documents left | Step 3 only picks documents that have parsed elements, and lists the skipped ones with the parser's reason |
 | 10 | Calls could run one after another if few partitions held the parts | Slow step 3 | `repartition(32)` spreads the calls over the workers |
 | 11 | The model repeats or skips `<!-- page N -->` markers (151 of 359 documents had a different marker count than pages) | Page numbers in the Markdown cannot be trusted | Validate each part's markers, redo bad parts page by page with the marker added in code, stitch in code |
-| 12 | `ai_parse_document` failed on some pages: `Request rate limit exceeded` (2,815 pages in 53 documents) and `Internal error` (365 pages in 11 documents). Found with the inspection notebook | About 6% of the pages (3,180 of 49,965 in the converted documents) have no content, so they are missing from the Markdown. PepsiCo 2018 lost 278 of 479 pages | Not fixed yet. Planned: re-parse the affected documents with lower parallelism and rerun their conversion |
+| 12 | `ai_parse_document` failed on some pages: `Request rate limit exceeded` (2,815 pages in 53 documents) and `Internal error` (365 pages in 11 documents). Found with the inspection notebook | About 6% of the pages (3,180 of 49,965 in the converted documents) have no content, so they are missing from the Markdown. PepsiCo 2018 lost 278 of 479 pages | Step 2b: validate the parse, re-parse only the failed pages within a page budget, reconvert only the parts that changed |
+
+## Validating the parse and re-parsing failed pages (step 2b)
+
+`ai_parse_document` sometimes answers a page with an error instead of content, mostly when many PDFs are parsed at once. In the first full run **3,180 of 49,965 pages (6%) failed**, in 55 documents. Those pages have no text, so they were missing from the Markdown. Step 2b finds them and parses only them again. It is built for a limited quota (the Databricks free tier): it spends as little as it can, and it never spends more than a budget you set.
+
+**How it decides what to do**
+
+```mermaid
+flowchart TD
+    A["silver_pdfs.parsed<br/>error_status per page"] --> B{"Page error?"}
+    B -- "no" --> OK[Nothing to do]
+    B -- "permanent<br/>(over 500 pages, conversion failed)" --> P[Never retried, listed at the end]
+    B -- "temporary<br/>(rate limit, internal error)" --> C{"Attempts left?<br/>Budget left?"}
+    C -- "no" --> W[Wait for the next run]
+    C -- "yes" --> D["Cut the failed pages into a small PDF<br/>parse it in small, spaced calls"]
+    D --> E["Put the new elements back<br/>at the right pages"]
+    E --> F["Step 3 drops the stored parts<br/>that no longer match, converts only those"]
+```
+
+| Guard | What it does | Why |
+| --- | --- | --- |
+| Validate first | Reads the parser's own `error_status`. Only temporary errors (rate limit, internal error) are retried. A PDF over 500 pages or a failed conversion is never retried | A retry that cannot work is wasted quota |
+| Re-parse only the failed pages | Builds a small PDF from just those pages (PyMuPDF) and parses that | Re-parsing the 55 documents whole would bill about 14,000 pages. This bills 3,180 |
+| Page budget per run | `reparse_page_budget`, default 300 pages | A large backlog is worked off over several runs, and one run can never spend more than the budget |
+| Small, spaced calls | `reparse_chunk_pages` pages per call (default 20), `reparse_pause_seconds` between calls (default 10), one document at a time | The rate limit that caused the errors is not hit again |
+| Stop on rate limit | If more than half of a call's pages fail again, the run stops | Do not keep spending while the service is limiting |
+| Attempt cap | `parse_attempts` counts failed passes. After `reparse_max_attempts` (default 3) the document is left alone | A page that always fails cannot loop forever |
+| Dry run | `reparse_dry_run = yes` prints the plan (documents, pages, what a whole re-parse would cost) and spends nothing | Look before spending |
+| One document | `reparse_doc` limits the run to one document | A cheap test |
+| Reconvert only what changed | After a re-parse, step 3 compares each stored part's page markers with the pages the new parse puts in that part, **without any `ai_query` call**, and drops only the parts that differ | Parts before the first changed page are kept. Only the changed parts are paid for again |
+| Conversion budget | `max_parts_per_run`, default 1000 parts | The `ai_query` spend of one run is capped too |
+
+**Why page numbering is not changed.** Pages are still counted 1, 2, 3 over pages that have content. Changing to true PDF page numbers would invalidate the stored parts of 48 other documents that have genuinely empty pages, and cost many extra `ai_query` calls.
+
+**Running it safely**
+
+1. Look: set `reparse_dry_run` to `yes` and run. It prints the plan and spends nothing.
+2. Test: set `reparse_doc` to one document and `reparse_page_budget` to a small number.
+3. Then run normally. Each run re-parses up to the budget and converts what changed. Repeat until the plan is empty.
+
+The inspection notebook ([src/inspect_parsed.ipynb](../../../src/inspect_parsed.ipynb)) shows the parser errors of any document and which pages are missing.
 
 ## Verified results
 

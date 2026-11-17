@@ -7,6 +7,8 @@ resources:
         - environment_key: default
           spec:
             environment_version: "2"
+            dependencies:
+              - pymupdf  # silver step 2b: builds a small PDF from the pages to re-parse
       tasks:
         - task_key: download
           environment_key: default

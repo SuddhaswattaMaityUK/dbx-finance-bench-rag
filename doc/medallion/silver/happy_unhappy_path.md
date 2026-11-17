@@ -63,6 +63,12 @@ silver_pdfs.parsed --split into parts + ai_query--> silver_pdfs.parts --join--> 
 - **Check:** count the `<!-- page N -->` markers per document and compare with the number of pages that have parsed content (dev run: they matched exactly for the three documents checked).
 - **Note:** `ai_parse_document` fails on some pages (`Request rate limit exceeded`, `Internal error`), so the marker count can be lower than the PDF page count. Those pages are missing from the Markdown. See the README, challenge 12.
 
+### 6b. `ai_parse_document` fails on some pages (rate limit, internal error)
+
+- **Found:** 3,180 of 49,965 pages (6%) in 55 documents, with the inspection notebook. The pages have no text, so they are missing from the Markdown.
+- **Handled:** step 2b of the silver notebook validates the parse, re-parses only the failed pages within `reparse_page_budget`, and step 3 reconverts only the parts that changed. See the README, section "Validating the parse and re-parsing failed pages".
+- **Limits:** a page that keeps failing stops being retried after `reparse_max_attempts`. Permanent errors (a PDF over 500 pages, a failed conversion) are never retried.
+
 ### 7. Cost and runtime
 
 - `ai_parse_document` and `ai_query` are billed per use. A first run over 368 filings can be large.
