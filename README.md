@@ -4,7 +4,7 @@ A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus
 
 ## Ingestion
 
-The `ingest_financebench` job runs two tasks in order: download, then bronze. Silver and gold come later.
+The `ingest_financebench` job runs three tasks in order: download, bronze, then silver. Gold comes later.
 
 ![Job run: download then bronze_pdfs](doc/medallion/bronze/bronze_graph.png)
 
@@ -24,6 +24,12 @@ The `bronze_pdfs` task loads the downloaded PDFs, as is, into the Delta table `b
 
 Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 
+### Part 3: Silver layer
+
+The `silver_parser` task parses each PDF with `ai_parse_document`, then converts it to Markdown with `ai_query` (titles, headings, tables and page separators preserved) into the table `silver_pdfs`.
+
+Details: [doc/medallion/silver/silver.md](doc/medallion/silver/silver.md)
+
 ## Documentation
 
 | Doc | Contents |
@@ -31,3 +37,4 @@ Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 | [doc/setup.md](doc/setup.md) | CLI install, authentication, deploying the bundle, CI/CD, GitHub secrets, Unity Catalog grants |
 | [doc/download/download.md](doc/download/download.md) | Ingestion part 1: how the PDF download works |
 | [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md) | Ingestion part 2: the bronze table and the Auto Loader load |
+| [doc/medallion/silver/silver.md](doc/medallion/silver/silver.md) | Ingestion part 3: parsing and Markdown conversion |
