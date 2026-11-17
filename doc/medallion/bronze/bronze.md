@@ -2,8 +2,15 @@
 
 The bronze layer has its own schema (`finance_bench_bronze`, dev `finance_bench_bronze_dev`) and two tasks of the `ingest_financebench` job. `bronze_pdfs` runs after [part 1, download](../../download/download.md) and loads the PDFs from the volume into the Delta table `bronze_pdfs`, as is. `bronze_split` then cuts the PDFs of more than 50 pages into parts and stores them in `bronze_pdf_parts`. Nothing is parsed or transformed: the parts are still raw bytes. Silver (parsed plain text) and gold (chunked text) come later.
 
-```
-download  -->  /Volumes/<catalog>/<bronze_schema>/docs/pdfs/*.pdf  -->  bronze_pdfs  -->  bronze_pdf_parts
+```mermaid
+flowchart TD
+    V[("volume: pdfs/*.pdf<br/>from the download task")] -->|"bronze_pdfs: Auto Loader, binaryFile,<br/>checkpoint, only new files"| B[("bronze_pdfs<br/>whole PDFs as bytes")]
+    B --> T{"bronze_split: does the PDF<br/>already have parts?"}
+    T -- yes --> SK["skip: a rerun does nothing"]
+    T -- no --> R{"Can it be read,<br/>and has more than part_pages pages?"}
+    R -- "yes: cut, one PDF per task,<br/>in parallel" --> P[("bronze_pdf_parts<br/>path, part_no, page_offset, pages, content")]
+    R -- "short, or unreadable:<br/>one part, original bytes" --> P
+    P -.->|"read by"| S["silver_parse"]
 ```
 
 ![Job run: download then bronze_pdfs, both succeeded](bronze_graph.png)
