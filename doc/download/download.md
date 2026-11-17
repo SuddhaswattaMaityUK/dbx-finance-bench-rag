@@ -5,8 +5,6 @@ This is the first task, `download`, of the `ingest_financebench` job. The next t
 [src/bronze/download.py](../../src/bronze/download.py) downloads every PDF from the public
 [patronus-ai/financebench](https://github.com/patronus-ai/financebench) `pdfs/` folder into a Unity Catalog volume.
 
-![PDFs dumped into the volume](PDF_DUMPS.png)
-
 ## Flow
 
 ```mermaid
@@ -35,8 +33,6 @@ With `--match <regex>` and `--limit <n>` it downloads only a sample: the dev tar
 ## Idempotent reload
 
 The load is idempotent: the script was rerun after the first pass had already downloaded everything. It found all 368 PDFs in the repo, skipped every one because it was already in the volume, and downloaded nothing. The run still succeeded.
-
-![Rerun skipped all 368 PDFs](DOWNLOADS_PDF_IDEMPOTENT.png)
 
 ## Running it
 
