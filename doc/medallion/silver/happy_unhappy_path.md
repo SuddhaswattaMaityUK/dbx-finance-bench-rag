@@ -6,16 +6,16 @@ What the silver stages do in each case. How to look after what stays open is in 
 
 | Case | What happens |
 | --- | --- |
-| First run | The stream parses every PDF (two at a time). Complete parses go to `silver_parsed`. Every page of them is converted into `silver_pages`, within the page budget. The `silver_documents` view shows the PDFs whose pages are all there |
+| First run | The stream parses every PDF (two at a time). Complete parses go to `silver_parsed`. Every page of them is converted into `silver_pages`. The `silver_documents` view shows the PDFs whose pages are all there |
 | Rerun, nothing new | The stream skips recorded PDFs, there is nothing to retry, no page is missing. Nothing is spent |
 | A new PDF arrives | Download and bronze add it. The stream parses it, and its pages are converted |
-| A run stops at its budget | The next run continues with the pages that are still missing |
+| A run stops early (the service keeps failing) | The next run continues with the pages that are still missing |
 
 ## Unhappy paths
 
 | Case | What happens | What to do |
 | --- | --- | --- |
-| The parser fails some pages (rate limit, internal error) | The parse is incomplete, so it is **not** stored. It goes to `silver_log` as retryable. The retry parses the PDF again later (one at a time, within a budget) | Nothing. Run the job. See `silver_failures` |
+| The parser fails some pages (rate limit, internal error) | The parse is incomplete, so it is **not** stored. It goes to `silver_log` as retryable. The retry parses the PDF again later (one at a time) | Nothing. Run the job. See `silver_failures` |
 | The parser rejects the PDF (over 500 pages, failed conversion) | Logged as not retryable | Split the PDF, or accept it is missing |
 | `ai_query` returns an error or an empty answer for a page | The page is logged and tried again on the next run, up to `max_attempts` | Nothing, or lower the load |
 | The model writes a page marker or `---` | The code removes them. The view adds the real ones | Nothing |

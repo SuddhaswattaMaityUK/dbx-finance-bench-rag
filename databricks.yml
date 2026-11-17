@@ -18,15 +18,9 @@ variables:
   pdf_limit:
     description: Download only the first n PDFs (0 = all)
     default: "0"
-  retry_page_budget:
-    description: PDF pages that retrying failed parses may cost in one run (0 = no retries)
-    default: "1000"
-  max_pages_per_run:
-    description: Pages converted with ai_query in one run (0 = no conversion)
-    default: "1000"
 
 targets:
-  # dev: its own schema, a small sample of short PDFs and small budgets. Safe to break.
+  # dev: its own schema, a small sample of short PDFs. Safe to break.
   dev:
     mode: development
     default: true
@@ -34,8 +28,6 @@ targets:
       schema: finance_bench_rag_dev
       pdf_match: EARNINGS
       pdf_limit: "5"
-      retry_page_budget: "200"
-      max_pages_per_run: "300"
     workspace:
       host: https://dbc-9551b733-1e19.cloud.databricks.com
 

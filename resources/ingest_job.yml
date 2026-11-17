@@ -49,7 +49,6 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-              retry_page_budget: ${var.retry_page_budget}
 
         - task_key: silver_convert
           depends_on:
@@ -59,4 +58,3 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
-              max_pages_per_run: ${var.max_pages_per_run}
