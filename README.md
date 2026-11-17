@@ -59,7 +59,7 @@ The dev and prod targets use **different schemas**, so tables, the volume and th
 | | dev (every push to a branch) | prod (merge to `master`) |
 | --- | --- | --- |
 | Schema | `workspace.finance_bench_rag_dev` | `workspace.finance_bench_rag` |
-| PDFs | 5 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
+| PDFs | 10 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
 
 The values are bundle variables in [databricks.yml](databricks.yml). The validation job can also check the prod data from dev without writing to it: run it with the `schema` parameter set to `finance_bench_rag`. It only reads.
 
