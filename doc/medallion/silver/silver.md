@@ -132,7 +132,7 @@ flowchart TD
 | Guard | What it does | Why |
 | --- | --- | --- |
 | Validate first | Reads the parser's own `error_status`. Only temporary errors (rate limit, internal error) are retried. A PDF over 500 pages or a failed conversion is never retried | A retry that cannot work is wasted quota |
-| Re-parse only the failed pages | Builds a small PDF from just those pages (PyMuPDF) and parses that | Re-parsing the 55 documents whole would bill about 14,000 pages. This bills 3,180 |
+| Re-parse only the failed pages | Builds a small PDF from just those pages (PyMuPDF) and parses that | Re-parsing the 55 documents whole would bill 11,870 pages. This bills 3,180 |
 | Page budget per run | `reparse_page_budget`, default 300 pages | A large backlog is worked off over several runs, and one run can never spend more than the budget |
 | Small, spaced calls | `reparse_chunk_pages` pages per call (default 20), `reparse_pause_seconds` between calls (default 10), one document at a time | The rate limit that caused the errors is not hit again |
 | Stop on rate limit | If more than half of a call's pages fail again, the run stops | Do not keep spending while the service is limiting |
