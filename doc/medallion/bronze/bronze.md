@@ -8,7 +8,7 @@ download  -->  /Volumes/<catalog>/<schema>/docs/pdfs/*.pdf  -->  bronze_pdfs
 
 ![Job run: download then bronze_pdfs, both succeeded](bronze_graph.png)
 
-The code and a step-by-step explanation are in the notebook [src/bronze_pdfs.ipynb](../../../src/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and receives `catalog` and `schema` from the bundle variables in [databricks.yml](../../../databricks.yml).
+The code and a step-by-step explanation are in the notebook [src/ingest/bronze_pdfs.ipynb](../../../src/ingest/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and receives `catalog` and `schema` from the bundle variables in [databricks.yml](../../../databricks.yml).
 
 ## Table
 

@@ -10,16 +10,36 @@ variables:
     description: Unity Catalog catalog name
     default: workspace
   schema:
-    description: Schema for tables and the vector index
+    description: Schema for the tables, the volume and the checkpoints. Each target has its own, so testing in dev never touches prod data
     default: finance_bench_rag
+  pdf_match:
+    description: Download only the PDFs whose file name matches this regex
+    default: ".*"
+  pdf_limit:
+    description: Download only the first n PDFs (0 = all)
+    default: "0"
+  retry_page_budget:
+    description: PDF pages that retrying failed parses may cost in one run (0 = no retries)
+    default: "1000"
+  max_pages_per_run:
+    description: Pages converted with ai_query in one run (0 = no conversion)
+    default: "1000"
 
 targets:
+  # dev: its own schema, a small sample of short PDFs and small budgets. Safe to break.
   dev:
     mode: development
     default: true
+    variables:
+      schema: finance_bench_rag_dev
+      pdf_match: EARNINGS
+      pdf_limit: "5"
+      retry_page_budget: "200"
+      max_pages_per_run: "300"
     workspace:
       host: https://dbc-9551b733-1e19.cloud.databricks.com
 
+  # prod: all the PDFs, in the real schema.
   prod:
     mode: production
     workspace:

@@ -11,27 +11,52 @@ resources:
         - task_key: download
           environment_key: default
           spark_python_task:
-            python_file: ../src/download.py
+            python_file: ../src/ingest/download.py
             parameters:
               - --catalog
               - ${var.catalog}
               - --schema
               - ${var.schema}
+              - --match
+              - ${var.pdf_match}
+              - --limit
+              - ${var.pdf_limit}
 
         - task_key: bronze_pdfs
           depends_on:
             - task_key: download
           notebook_task:
-            notebook_path: ../src/bronze_pdfs.ipynb
+            notebook_path: ../src/ingest/bronze_pdfs.ipynb
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
 
-        - task_key: silver_parser
+        # Silver: parse and check, retry the failed parses, convert the pages. Each task can run on its own.
+        - task_key: silver_parse
           depends_on:
             - task_key: bronze_pdfs
           notebook_task:
-            notebook_path: ../src/silver_pdfs.ipynb
+            notebook_path: ../src/silver/parse_pdfs.ipynb
             base_parameters:
               catalog: ${var.catalog}
               schema: ${var.schema}
+
+        - task_key: silver_retry
+          depends_on:
+            - task_key: silver_parse
+          notebook_task:
+            notebook_path: ../src/silver/retry_parses.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              retry_page_budget: ${var.retry_page_budget}
+
+        - task_key: silver_convert
+          depends_on:
+            - task_key: silver_retry
+          notebook_task:
+            notebook_path: ../src/silver/convert_pages.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              max_pages_per_run: ${var.max_pages_per_run}

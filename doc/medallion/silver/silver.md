@@ -1,154 +1,64 @@
-# Silver layer: from PDFs to Markdown
+# Silver layer: operations
 
-The silver layer turns each raw FinanceBench filing (a PDF of 100+ pages) into one clean **Markdown document**, with the document structure kept: titles, headings, plain text, tables, page headers and footers, and page separators. Gold (chunking and embeddings for RAG) builds on this text.
+The design, the stages and the challenges are in the [README](../../../README.md#3-silver-pdfs-to-markdown), and every stage is explained in its notebook in [src/silver/](../../../src/silver/). This page is for **running and looking after** the silver layer.
 
-- **Task:** `silver_parser`, the third task of the `ingest_financebench` job, after `download` and `bronze_pdfs`.
-- **Code:** [src/silver_pdfs.ipynb](../../../src/silver_pdfs.ipynb). Every stage there has its own explanation cell.
-- **Output:** one Delta table, `silver_pdfs`, with one row per PDF.
-- **Built with:** Databricks `ai_parse_document` (layout extraction), `ai_query` (conversion to Markdown), Structured Streaming and Delta `MERGE`.
+## What is where
 
-## At a glance
+| Name | Kind | Holds |
+| --- | --- | --- |
+| `silver_parsed` | table | One row per PDF with a complete parse (`path`, `parsed` VARIANT, `pdf_pages`, `pages`, `parsed_at`) |
+| `silver_pages` | table | The Markdown of each converted page (`path`, `page_no`, `markdown`, `converted_at`) |
+| `silver_log` | table | The trail of every failure (`path`, `stage` parse or convert, `page_no`, `attempt`, `retryable`, `reason`, `pdf_pages`, `logged_at`) |
+| `silver_documents` | view | The final Markdown per PDF, only when all its pages are converted |
+| `silver_failures` | view | What is still open: PDFs not parsed and pages not converted, with the last reason |
 
-```mermaid
-flowchart LR
-    B[(bronze_pdfs<br/>raw PDF bytes)] -->|"readStream + checkpoint<br/>ai_parse_document v2.0"| P["silver_pdfs.parsed<br/>elements: type, content, page"]
-    P -->|"split into parts<br/>of 3 pages"| S["parts<br/>(part 0, part 1, ...)"]
-    S -->|"ai_query per part<br/>(parallel)"| M["silver_pdfs.parts<br/>Markdown per part"]
-    M -->|"join in order<br/>when all parts exist"| D["silver_pdfs.markdown<br/>one document per PDF"]
+`page_no` is the real PDF page number. The `<!-- page N -->` markers in `silver_documents` use the same number.
+
+## Where to look
+
+```sql
+-- How much is done
+SELECT (SELECT count(*) FROM silver_parsed)    AS pdfs_parsed,
+       (SELECT count(*) FROM silver_documents) AS documents_complete,
+       (SELECT count(*) FROM silver_pages)     AS pages_converted;
+
+-- What is still open, and why
+SELECT stage, retryable, count(*) FROM silver_failures GROUP BY stage, retryable;
+SELECT * FROM silver_failures ORDER BY stage, path;
+
+-- The history of one PDF
+SELECT * FROM silver_log WHERE path LIKE '%PEPSICO_2018%' ORDER BY logged_at;
 ```
 
-| Stage | What happens | Why it is safe to rerun |
+## What to do when something is open
+
+| In `silver_failures` | Meaning | What to do |
 | --- | --- | --- |
-| 1. Create the table | `CREATE TABLE IF NOT EXISTS` with explicit columns | `IF NOT EXISTS`; adds missing columns to an older table |
-| 2. Parse | Streams `bronze_pdfs`, runs `ai_parse_document`, appends to `silver_pdfs` | The streaming checkpoint remembers parsed PDFs |
-| 3. Convert | Splits each document into parts, runs `ai_query` per part, stores the parts, joins them into `markdown` | Only parts not yet stored are sent to the model |
+| stage `parse`, retryable | Pages failed (rate limit, internal error) | Run the job. The retry takes it, within `retry_page_budget`. After `max_attempts` it is left alone: raise `max_attempts` for one run if you want another try |
+| stage `parse`, not retryable | A PDF over 500 pages, or a failed conversion | A retry cannot help. Split the PDF into smaller files, or accept that it is missing |
+| stage `convert` | A page returned an error or an empty answer | Run the job. The page is tried again, up to `max_attempts` |
+| nothing, but a PDF is not in `silver_documents` | Pages are not converted yet (the budget stopped the run) | Run the job again |
 
-## The table
+## Running it with a small quota
 
-One table, `silver_pdfs`:
+Every stage has a budget, so one run cannot spend more than you set:
 
-| Column | Meaning |
+| Widget | Limits |
 | --- | --- |
-| `path` | Volume path of the PDF |
-| `parsed` | `ai_parse_document` output (VARIANT): every element with its type, content and page |
-| `markdown` | The final Markdown document. NULL until every part is converted |
-| `parts` | `MAP<INT, STRING>`: the Markdown of each converted part, by part number |
-| `num_parts` | How many parts the document has |
+| `retry_page_budget` | PDF pages parsed again in one run. `0` = no retries |
+| `max_pages_per_run` | Pages converted with `ai_query` in one run. `0` = no conversion |
+| `max_files_per_batch` | PDFs parsed at once by the stream (small = fewer rate-limit errors) |
+| `max_attempts` | Tries per PDF or page before giving up |
 
-`parts` and `num_parts` are what make step 3 resumable: they record what is already done.
+A good first run on a new set of PDFs: `retry_page_budget` 0 and `max_pages_per_run` 100. Look at the result with the queries above, then raise the budgets.
 
-## Example: input and output
+## Maintenance notes
 
-`ai_parse_document` returns a list of typed elements. For the first page of the Boeing 2022 10-K:
-
-| type | page | content |
-| --- | --- | --- |
-| figure | 0 | BOEING |
-| text | 0 | UNITED STATES SECURITIES AND EXCHANGE COMMISSION Washington, D.C. 20549 |
-| title | 0 | FORM 10-K |
-| text | 0 | (Mark One) |
-| ... | ... | ... |
-
-After `ai_query`, the same page is Markdown, starting with the page marker, with the title as a heading:
-
-```markdown
-<!-- page 1 -->
-*BOEING*
-UNITED STATES
-SECURITIES AND EXCHANGE COMMISSION
-Washington, D.C. 20549
-
-# FORM 10-K
-
-(Mark One)
-...
-## THE BOEING COMPANY
-(EXACT NAME OF REGISTRANT AS SPECIFIED IN ITS CHARTER)
-```
-
-A table in the filing (given by the parser as HTML) comes out as a Markdown table:
-
-```markdown
-| Union | Percent of our Employees Represented | Status of the Agreements with Major Union |
-| --- | --- | --- |
-| The International Association of Machinists and Aerospace Workers (IAM) | 20% | We have two major agreements; one expiring in September 2024 and one in July 2025. |
-| The Society of Professional Engineering Employees in Aerospace (SPEEA) | 10% | We have two major agreements expiring in October 2026. |
-```
-
-Pages are separated by a blank line, `---`, a blank line and `<!-- page N -->`.
-
-## How the conversion works
-
-### Stage 2: parse (once per PDF)
-
-`ai_parse_document(content, map('version', '2.0'))` extracts the layout of the whole PDF. It has no model to choose and is never split. The read is a stream with a checkpoint, so each PDF is parsed once, however often the job runs or is redeployed. `maxFilesPerTrigger` keeps each micro-batch small so progress is saved often.
-
-### Stage 3: convert (once per part)
-
-1. **Split.** The elements are numbered by page and grouped into parts of `pages_per_call` pages (default 3): pages 1-3 are part 0, pages 4-6 are part 1, and so on. A page is never cut in half.
-2. **Convert.** Each part goes to `ai_query` with a prompt that keeps all content and asks for headings (`#`, `##`), plain text, Markdown tables, italic page headers/footers and page markers. `temperature` is 0. The calls run in parallel across the cluster.
-3. **Store.** Successful parts are merged into `parts`. Failed parts are not stored.
-4. **Join.** When a document has all `num_parts` parts, `markdown` is built from them in order, with `---` between parts (added in code, so it is exact).
-5. **Repeat.** The cell works through the documents in batches of `docs_per_batch` (default 50), saving each batch before starting the next. One job run converts every document.
-
-## Challenges and solutions
-
-These are real problems hit while building and testing the layer.
-
-| # | Challenge | Impact | Solution |
-| --- | --- | --- | --- |
-| 1 | The model endpoint caps output at **10000 tokens** | A whole filing in one call was cut off silently: a 150-page filing came back as about 43,000 characters | Split each document into parts of a few pages, one `ai_query` call each, then join |
-| 2 | The page number is in `bbox[0].page_id`, not on the element | Every element had a NULL page, so each document became one page and one part, causing challenge 1 to reappear | Read the page from `bbox[0].page_id` (verified: 1,042 elements spread over 150 pages) |
-| 3 | A failure late in a long run would lose everything | A rerun would pay again for thousands of `ai_query` calls | Store each successful part. A rerun sends only the missing parts. Save per batch of documents |
-| 4 | A part that can never succeed would loop forever | Wasted money | The loop stops when a batch stores no new part |
-| 5 | Parsing is slow and billed per document | Reparsing on every run | Streaming checkpoint: each PDF is parsed once |
-| 6 | The configured model endpoint did not exist, and `ai_query` rejected `max_tokens` above the endpoint's cap | The job failed in step 3 | List the endpoints with `databricks serving-endpoints list`; use `databricks-qwen3-next-80b-a3b-instruct` with `max_tokens` 10000 |
-| 7 | `ai_query` with `failOnError => false` returns `result` and `errorMessage` | Reading a field called `response` failed with `FIELD_NOT_FOUND` | Read `r.result` |
-| 8 | The table already existed with fewer columns | `CREATE TABLE IF NOT EXISTS` does not add columns | `ALTER TABLE ... ADD COLUMNS` when `parts` is missing |
-| 9 | Calls could run one after another if few partitions held the parts | Slow step 3 | `repartition(32)` spreads the calls over the workers |
-
-## Verified results
-
-Tested in the `dev` job on three filings. Every part completed and the Markdown ends at the end of the filing, with the signature block.
-
-| Document | PDF pages | Pages with parsed content | Page markers | Parts | Markdown size |
-| --- | --- | --- | --- | --- | --- |
-| Lockheed Martin 2020 10-K | 132 | 112 | 112 | 38 / 38 | 465k characters |
-| Boeing 2022 10-K | 190 | 115 | 115 | 39 / 39 | 335k |
-| Corning 2015 10-K | 273 | 270 | 270 | 90 / 90 | 922k |
-
-- One `<!-- page N -->` marker per page that had parsed content. The parser returns no elements for some pages (for example blank or image-only pages), so the PDF page count can be higher.
-- Headings and Markdown tables are present in all three.
-- The three-document test took about 3 minutes in step 3 before the `repartition` change.
-
-Not yet verified: accuracy of table cells against the PDF on a larger sample, and total time and cost for all 368 filings.
-
-## Running it
-
-```bash
-databricks bundle deploy -t dev
-databricks bundle run ingest_financebench -t dev
-```
-
-Parameters (notebook widgets):
-
-| Widget | Default | Meaning |
-| --- | --- | --- |
-| `catalog`, `schema` | `workspace`, `finance_bench_rag` | From the bundle variables |
-| `endpoint` | `databricks-qwen3-next-80b-a3b-instruct` | Model serving endpoint used by `ai_query` |
-| `max_files_per_batch` | `10` | Step 2: bronze files per micro-batch |
-| `pages_per_call` | `3` | Step 3: pages per `ai_query` call. Lower it if parts fail |
-| `docs_per_batch` | `50` | Step 3: documents per save point |
-
-Other operations:
-- **Rerun or redeploy:** safe. Nothing already stored is parsed or converted again.
-- **Redo only the prompt:** `UPDATE silver_pdfs SET markdown = NULL, parts = NULL, num_parts = NULL`, then rerun. The parse is kept.
-- **Full rebuild:** drop `silver_pdfs`, delete the checkpoint folder `/Volumes/<catalog>/<schema>/docs/_checkpoints/silver_pdfs` and rerun. Dropping only the table leaves the checkpoint, so nothing would be reparsed.
-
-## Limits and next steps
-
-- **Cost:** `ai_parse_document` and `ai_query` are billed per use. A 150-page filing is about 50 `ai_query` calls, so the full set is on the order of 15,000 calls.
-- **Model-written separators:** the `<!-- page N -->` markers inside a part are written by the model. Between parts they are added in code. A count check against the parsed pages is the way to verify them.
-- **Changed or deleted PDFs:** not handled. Bronze tracks files by path, and silver keeps rows of deleted files. See [happy_unhappy_path.md](happy_unhappy_path.md).
-- **Failure reasons are not stored:** failed parts are counted in the log but their error messages are not saved.
-- **Next layer:** gold chunks the Markdown (for example by heading or page) and creates embeddings for retrieval.
+- Every stage only does what is missing. Running the job twice in a row does nothing the second time.
+- `silver_log` only grows. A failure is never deleted: it stops being listed in `silver_failures` when the PDF or page is finally stored.
+- To redo the Markdown with a new prompt: `DELETE FROM silver_pages`, then run. The parses are kept.
+- Full rebuild: drop the three tables and two views, delete the checkpoint folder `/Volumes/<catalog>/<schema>/docs/_checkpoints/silver_parse`, and run.
+- **Tasks.** `silver_parse` (stream: parse and check), `silver_retry` (parse the retryable failures again, within a budget) and `silver_convert` (one `ai_query` call per page). Each one creates the tables if they are missing, so each can be run alone.
+- **Validation is a separate job.** `validate_silver` only reads the tables and fails if a rule that must hold is broken (a PDF with no record, duplicate or empty pages, pages beyond the document). Run it after the ingest job: `databricks bundle run validate_silver -t <target>`.
+- **Where the logic lives.** Checks on parser and model output: `src/silver/checks.py` (plain Python, tested with `pytest`). Table and view definitions and the insert helper: `src/silver/tables.py`. Parse and file a PDF: `src/silver/parsing.py`.
+- The first version of silver used one table, `silver_pdfs`, with a parts map. Its work was moved into the new tables without calling the parser or the model again. It is no longer used.
