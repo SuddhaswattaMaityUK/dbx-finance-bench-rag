@@ -27,9 +27,7 @@ flowchart LR
 | Validation | `validate_silver` (separate job) | A pass or fail check of the tables, and what is still open | Done |
 | Gold | not started | Chunks and embeddings | Next |
 
-The tasks run in order in the job `ingest_financebench` (the screenshot is from the first design, which had one silver task):
-
-![Job graph: download, bronze_pdfs, silver_parser](doc/medallion/silver/silver_pipeline.png)
+The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`, `silver_retry`, `silver_convert`.
 
 Every task is **safe to rerun**: each one remembers what it has already done and only processes what is new.
 
@@ -70,15 +68,11 @@ The values are bundle variables in [databricks.yml](databricks.yml). The validat
 
 Downloads all FinanceBench PDFs into the volume `/Volumes/<catalog>/<bronze_schema>/docs/pdfs/`. Files already in the volume are skipped.
 
-![PDFs dumped into the volume](doc/download/PDF_DUMPS.png)
-
 Details: [doc/download/download.md](doc/download/download.md)
 
 ## 2. Bronze: raw PDFs
 
 Loads the PDFs, as is, into the Delta table `bronze_pdfs` (`path`, `modificationTime`, `length`, `content`) with Auto Loader. A checkpoint means each run loads only new files. The first run loaded all 368 PDFs.
-
-![bronze_pdfs table](doc/medallion/bronze/bronze_table_created_by_autoloader.png)
 
 Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 

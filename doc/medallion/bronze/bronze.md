@@ -13,8 +13,6 @@ flowchart TD
     P -.->|"read by"| S["silver_parse"]
 ```
 
-![Job run: download then bronze_pdfs, both succeeded](bronze_graph.png)
-
 The code and a step-by-step explanation are in the notebook [src/bronze/bronze_pdfs.ipynb](../../../src/bronze/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and receives `catalog` and `bronze_schema` from the bundle variables in [databricks.yml](../../../databricks.yml).
 
 ## Table
@@ -26,13 +24,11 @@ The code and a step-by-step explanation are in the notebook [src/bronze/bronze_p
 | `length` | File size in bytes |
 | `content` | Raw PDF bytes |
 
-![bronze_pdfs table in Catalog Explorer](bronze_table_created_by_autoloader.png)
-
 ## How it loads
 
 The load is incremental. It uses [Auto Loader](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/) (`cloudFiles`, `binaryFile` format) with `trigger(availableNow=True)`, so each run loads only the PDFs it has not seen, appends them and stops. Auto Loader records processed files in a checkpoint at `/Volumes/<catalog>/<bronze_schema>/docs/_checkpoints/bronze_pdfs`.
 
-The first run, shown in the job graph above, read and wrote 368 rows, one per PDF, in about 50 seconds on serverless compute.
+The first run read and wrote 368 rows, one per PDF, in about 50 seconds on serverless compute.
 
 ## The parts: `bronze_pdf_parts`
 
