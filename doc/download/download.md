@@ -1,19 +1,34 @@
 # Ingestion, part 1: Download
 
-This is the first task, `download`, of the `ingest_financebench` job. The second task loads the PDFs into the bronze table: [part 2, bronze layer](../medallion/bronze/bronze.md).
+This is the first task, `download`, of the `ingest_financebench` job. The next tasks load the PDFs into bronze and cut them into parts: [part 2, bronze layer](../medallion/bronze/bronze.md).
 
 [src/bronze/download.py](../../src/bronze/download.py) downloads every PDF from the public
 [patronus-ai/financebench](https://github.com/patronus-ai/financebench) `pdfs/` folder into a Unity Catalog volume.
 
 ![PDFs dumped into the volume](PDF_DUMPS.png)
 
+## Flow
+
+```mermaid
+flowchart LR
+    G["GitHub: patronus-ai/financebench<br/>pdfs/ folder"] -->|"one API call: list the PDFs"| L["List of 368 PDFs"]
+    L -->|"--match and --limit<br/>(dev: a small sample)"| F["PDFs to fetch"]
+    F --> E{"Already in the volume<br/>and not empty?"}
+    E -- yes --> SK["skip"]
+    E -- no --> D["download"]
+    D -- ok --> V[("volume<br/>/Volumes/catalog/bronze_schema/docs/pdfs/")]
+    D -- failed --> FL["logged, reported at the end:<br/>the job fails"]
+    SK --> V
+    V -.->|next task| B[bronze_pdfs]
+```
+
 ## What it does
 
-With `--match <regex>` and `--limit <n>` it downloads only a sample: the dev target uses `--match EARNINGS --limit 5` (five short earnings releases) so that testing is cheap. Prod downloads all 368.
+With `--match <regex>` and `--limit <n>` it downloads only a sample: the dev target uses `--match EARNINGS --limit 28` (28 short earnings releases) so that testing is cheap. Prod downloads all 368.
 
-1. Creates the schema and the `docs` volume if they don't exist (`IF NOT EXISTS`).
+1. Creates the bronze schema and its `docs` volume if they don't exist (`IF NOT EXISTS`).
 2. Lists the PDFs in the repo with one GitHub API call.
-3. Downloads each PDF to `/Volumes/<catalog>/<schema>/docs/pdfs/`.
+3. Downloads each PDF to `/Volumes/<catalog>/<bronze_schema>/docs/pdfs/`.
 4. Skips any file already in the volume, so reruns are cheap. A rerun that has nothing to do logs `downloaded=0 skipped=<n> failed=0`.
 5. Logs each download as `[i/total] downloaded <name> (<size> MB)`. Failed downloads are logged and reported together at the end, and the job fails.
 

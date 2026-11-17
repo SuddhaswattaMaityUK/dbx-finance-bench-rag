@@ -1,6 +1,6 @@
 # Silver layer: happy and unhappy paths
 
-What the silver stages do in each case. How to look after what stays open is in [silver.md](silver.md).
+What the silver stages do in each case. How to look after what stays open, and the flowchart of what is retryable and what is not, are in [silver.md](silver.md#silver_log-retryable-and-not-retryable).
 
 ## Happy path
 

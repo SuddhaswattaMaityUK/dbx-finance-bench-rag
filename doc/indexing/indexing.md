@@ -4,13 +4,18 @@ Not built yet. This page keeps the idea so the next step starts from a plan.
 
 ## Where it fits
 
+```mermaid
+flowchart LR
+    subgraph ingestion
+      D[download] --> B["bronze<br/>PDFs, parts"] --> S["silver<br/>Markdown per PDF"]
+    end
+    S --> V[validation]
+    V --> CH["chunking<br/>one table per strategy"]
+    CH --> VS[("vector store<br/>one index per strategy")]
+    VS -.->|later| RT["retrieval and reranker"]
 ```
-financebench_pipeline (parent job)
-  ingestion   ->  validation  ->  indexing  ->  (later) retrieval and reranking
-  download         silver_*        chunking
-  bronze                           vector store
-  silver
-```
+
+All of it runs as tasks of the parent job `financebench_pipeline`.
 
 - **Input:** the view `silver_documents`. It only shows PDFs whose pages are all converted, so indexing never sees a half document. Page markers (`<!-- page N -->`) are in the text, so a chunk can keep its page number for citations.
 - **Job:** a separate job, `indexing`, in its own `resources/indexing_job.yml` and `src/indexing/`. It is added to [financebench_pipeline_job.yml](../../resources/financebench_pipeline_job.yml) as the last task. Ingestion is not re-run to try a new chunking: parsing is the expensive part, and it is already stored.

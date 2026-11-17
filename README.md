@@ -49,7 +49,6 @@ src/
                             checks.py (checks on parser and model output, plain Python)
                             silver_tables.py (tables and views), parsing.py (parse and file a part)
   validate/                 validate_silver.ipynb
-  migrate/                  one-off: move the tables from the old single schema (see doc/migration.md)
 tests/                      test_checks.py (pytest, no Databricks needed)
 doc/                        setup, one page per layer
 .github/workflows/          deploy-dev, deploy-prod, test
@@ -193,33 +192,33 @@ SELECT path, markdown FROM silver_documents WHERE path LIKE '%BOEING_2022%';
 
 ### Results
 
-State of the real data before the move to one schema per layer (it is copied, not parsed again, see [doc/migration.md](doc/migration.md)), carried over from the first design without calling the parser or the model again:
+State of the real data in prod (`finance_bench_bronze`, `finance_bench_silver`):
 
 | | |
 | --- | --- |
-| PDFs | 368 |
-| Complete parses | 304 |
-| Parses with failed pages, to retry | 55 (3,180 pages) |
-| Not parseable (over 500 pages or failed conversion) | 9 |
-| Pages converted | 46,597 |
-| Complete documents in `silver_documents` | 291 |
-| Parsed PDFs still missing pages | 13 (16 pages, converted on the next run) |
-| Pages kept for the 55 PDFs that wait for a parse retry | 8,634 (not converted twice) |
+| PDFs in `bronze_pdfs` | 368 |
+| Parts in `bronze_pdf_parts` (PDFs cut into parts of up to 50 pages) | 637 |
+| Parts parsed | 635 |
+| Pages converted | 53,714 (every page the parser found content on) |
+| Complete documents in `silver_documents` | **366 of 368** |
+| Not parseable | 2: `INTEL_2023_8K_dated-2023-02-10.pdf` and `INTEL_2023_8K_dated-2023-08-16.pdf` fail with "Document conversion failed" in the parser |
 
-The marker problem (challenge 3) was measured on the first design: 151 of 359 documents had a different number of markers than pages. In the new design the markers are added by the view, so this cannot happen. Quality was checked by eye on three filings (headings and Markdown tables are present, and the text matches the parsed elements). Table accuracy was not measured against the PDFs.
+Before the split, 304 PDFs parsed, 55 lost pages to the parser's rate limit and 9 could not be parsed (7 over 500 pages). In parts, those 55 and the PDFs over 500 pages parse, and a 155-page filing that lost 27 pages whole parsed completely.
 
-**Tested in dev** (own schemas, 15 short earnings releases, cut into parts of 5 pages): 38 parts parsed with 0 failures, 198 pages converted, 15 complete documents. The validation job passed on dev, and on the real data it passed read-only (no PDF without a record, no duplicate or empty pages).
+The marker problem (challenge 3) was measured on the first design: 151 of 359 documents had a different number of markers than pages. In the current design the markers are added by the view, so this cannot happen.
 
-**Still to do on prod:** the first prod run after the merge retries the 55 PDFs with failed pages and converts the 16 missing pages and whatever the retries add.
+**What is validated.** The `validate_silver` job checks that the tables are consistent: every PDF has parts, every part is parsed or logged, no duplicate or empty pages, no orphan pages. It passes on dev and prod. It does **not** check that the text is right. Quality was checked by eye on three filings (headings and Markdown tables are present, and the text matches the parsed elements). Table accuracy was not measured against the PDFs.
+
+**Tested in dev** (own schemas, 28 short earnings releases, cut into parts of 5 pages): 102 of 103 parts parsed, 491 pages converted, 27 of 28 documents complete, and the validation job passed.
 
 ### Limits and next steps
 
-- **Cost:** `ai_parse_document` is billed per page and `ai_query` per token. Retrying the 55 PDFs whole costs 11,870 parse pages. It happens once: a PDF that parses completely is never parsed again.
+- **Cost:** `ai_parse_document` is billed per page and `ai_query` per token. A part that parses completely is never parsed again, and a retry costs at most 50 parse pages.
 - **More `ai_query` calls:** one per page, about three times as many requests as three pages per call, with about the same tokens (only the short prompt repeats).
-- **A failed conversion** (1 PDF) has no Markdown unless the split fixes it. The 8 PDFs over 500 pages become parseable with the split.
+- **Two PDFs have no Markdown:** the INTEL 8-Ks that fail with `Document conversion failed` in the parser. The split made the 8 PDFs over 500 pages parseable.
 - **Changed or deleted PDFs:** not handled. Bronze tracks files by path, and silver keeps rows of deleted files. See [happy_unhappy_path.md](doc/medallion/silver/happy_unhappy_path.md).
 - **Table accuracy** was checked on a sample by eye, not measured.
-- **Next layer:** gold chunks the Markdown (for example by heading or page) and creates embeddings.
+- **Next:** a chunker turns `silver_documents` into chunk tables, one per strategy, and a vector store indexes them. See [doc/indexing/indexing.md](doc/indexing/indexing.md).
 
 ## Run it
 
