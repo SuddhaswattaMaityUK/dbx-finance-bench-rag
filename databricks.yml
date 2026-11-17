@@ -18,6 +18,9 @@ variables:
   pdf_limit:
     description: Download only the first n PDFs (0 = all)
     default: "0"
+  part_pages:
+    description: PDFs with more pages are cut into parts of this size before they are parsed
+    default: "50"
 
 targets:
   # dev: its own schema, a small sample of short PDFs. Safe to break.
@@ -27,7 +30,8 @@ targets:
     variables:
       schema: finance_bench_rag_dev
       pdf_match: EARNINGS
-      pdf_limit: "5"
+      pdf_limit: "10"
+      part_pages: "5"  # the dev PDFs are short: a small part size makes the split run
     workspace:
       host: https://dbc-9551b733-1e19.cloud.databricks.com
 
