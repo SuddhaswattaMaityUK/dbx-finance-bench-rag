@@ -16,9 +16,9 @@ def split_pdf(content, size):
     A PDF that is short, or that cannot be read here, is one part with its original bytes: the parser then
     decides, and a failure is logged like any other.
     """
-    try:
-        from pypdf import PdfReader, PdfWriter
+    from pypdf import PdfReader, PdfWriter  # outside the try: a missing library must fail, not look like a bad PDF
 
+    try:
         reader = PdfReader(BytesIO(content))
         ranges = part_ranges(len(reader.pages), size)
         if len(ranges) == 1:

@@ -6,7 +6,7 @@ The design, the stages and the challenges are in the [README](../../../README.md
 
 | Name | Kind | Holds |
 | --- | --- | --- |
-| `silver_parts` | table | The PDFs cut into parts of at most `part_pages` pages (`path`, `part_no`, `page_offset`, `pages`, `content` bytes, `split_at`). A PDF with `part_pages` pages or fewer is one part |
+| `silver_parts` | table | The PDFs cut into parts of at most `part_pages` pages (`path`, `part_no`, `page_offset`, `pages`, `content` bytes, `split_at`). A PDF with `part_pages` pages or fewer is one part. A PDF that was parsed before the split is one part without bytes (`content` empty): it is never parsed again |
 | `silver_parsed` | table | One row per part with a complete parse (`path`, `part_no`, `page_offset`, `parsed` VARIANT, `pdf_pages`, `pages`, `parsed_at`) |
 | `silver_pages` | table | The Markdown of each converted page (`path`, `page_no`, `markdown`, `converted_at`) |
 | `silver_log` | table | The trail of every failure (`path`, `stage` parse or convert, `page_no`, `attempt`, `retryable`, `reason`, `pdf_pages`, `logged_at`, `part_no`). A parse failure is about a part (`part_no`), a convert failure about a page (`page_no`) |
