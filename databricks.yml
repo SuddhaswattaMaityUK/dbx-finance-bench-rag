@@ -38,7 +38,7 @@ targets:
       silver_schema: finance_bench_silver_dev
       old_schema: finance_bench_rag_dev
       pdf_match: EARNINGS
-      pdf_limit: "20"
+      pdf_limit: "28"
       part_pages: "5"  # the dev PDFs are short: a small part size makes the split run
     workspace:
       host: https://dbc-9551b733-1e19.cloud.databricks.com

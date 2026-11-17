@@ -42,7 +42,7 @@ Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/bro
 
 **Why parts.** The parser throttles (`Request rate limit exceeded`) on long PDFs and a failed page throws away the whole parse. A 155-page filing lost 27 pages whole and came back complete in four parts. A part that fails is retried alone, at most 50 pages, and the 500-page limit of the parser no longer matters.
 
-Only PDFs without parts are cut, one at a time, so a rerun does nothing. A PDF that cannot be read is one part with its original bytes, and the parser decides.
+Only PDFs without parts are cut, so a rerun does nothing. The cutting is a Spark job with one PDF per task, so the PDFs are cut in parallel on the executors and their bytes never pass through the driver. A PDF that cannot be read is one part with its original bytes, and the parser decides.
 
 ## Running it
 
