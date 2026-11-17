@@ -22,10 +22,11 @@ flowchart LR
 | --- | --- | --- | --- |
 | Download | `download` | PDFs in a Unity Catalog volume | Done |
 | Bronze | `bronze_pdfs` | Table `bronze_pdfs`: raw PDF bytes | Done |
-| Silver | `silver_parser` | Tables `silver_parsed`, `silver_pages`, `silver_log` and the view `silver_documents`: **Markdown** per PDF | Redesigned and simplified, migration in progress. See [results](#results) |
+| Silver | `silver_parse`, `silver_retry`, `silver_convert` | Tables `silver_parsed`, `silver_pages`, `silver_log` and the view `silver_documents`: **Markdown** per PDF | Built and tested in dev. Prod data: 291 of 368 documents complete, the rest waiting (see [results](#results)) |
+| Validation | `validate_silver` (separate job) | A pass or fail check of the tables, and what is still open | Done |
 | Gold | not started | Chunks and embeddings | Next |
 
-The three tasks run in order in the job `ingest_financebench`:
+The tasks run in order in the job `ingest_financebench` (the screenshot is from the first design, which had one silver task):
 
 ![Job graph: download, bronze_pdfs, silver_parser](doc/medallion/silver/silver_pipeline.png)
 
@@ -188,7 +189,7 @@ The helper notebook [src/tools/inspect_parsed.ipynb](src/tools/inspect_parsed.ip
 
 ### Results
 
-State after the first design, which the migration carries over (no parser or model call is repeated):
+State of the real data (schema `finance_bench_rag`), carried over from the first design without calling the parser or the model again:
 
 | | |
 | --- | --- |
@@ -196,11 +197,16 @@ State after the first design, which the migration carries over (no parser or mod
 | Complete parses | 304 |
 | Parses with failed pages, to retry | 55 (3,180 pages) |
 | Not parseable (over 500 pages or failed conversion) | 9 |
-| Pages converted | about 46,600 |
+| Pages converted | 46,597 |
+| Complete documents in `silver_documents` | 291 |
+| Parsed PDFs still missing pages | 13 (16 pages, converted on the next run) |
+| Pages kept for the 55 PDFs that wait for a parse retry | 8,634 (not converted twice) |
 
 The marker problem (challenge 3) was measured on the first design: 151 of 359 documents had a different number of markers than pages. In the new design the markers are added by the view, so this cannot happen. Quality was checked by eye on three filings (headings and Markdown tables are present, and the text matches the parsed elements). Table accuracy was not measured against the PDFs.
 
-_The numbers after the new design's first runs: to be added._
+**Tested in dev** (own schema, 5 short earnings releases): 5 PDFs parsed with 0 failures, 47 pages converted with 47 `ai_query` calls, 5 complete documents. The validation job passed on dev, and on the real data it passed read-only (no PDF without a record, no duplicate or empty pages).
+
+**Still to do on prod:** the first prod run after the merge retries the 55 PDFs with failed pages (up to `retry_page_budget` = 1000 parse pages per run, so it takes several runs) and converts the 16 missing pages and whatever the retries add.
 
 ### Limits and next steps
 
