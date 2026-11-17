@@ -11,4 +11,4 @@ One table, `silver_pdfs` (`path`, `parsed` VARIANT, `markdown`), filled in two n
 1. `ai_parse_document` parses each new PDF into `parsed`.
 2. `ai_query` fills `markdown` where it is empty. The prompt keeps all content, titles (`#`), headings (`##`), plain text, tables (Markdown tables), metadata (page headers/footers) and puts `---` plus `<!-- page N -->` between pages.
 
-Each step only processes PDFs not yet processed. The `endpoint` parameter (default `databricks-claude-sonnet-4`) selects the model. Billed per use, so test on a few PDFs first. To rebuild, drop `silver_pdfs` and rerun.
+Each step only processes PDFs not yet processed. The `endpoint` parameter (default `databricks-qwen3-next-80b-a3b-instruct`) selects the model. Billed per use, so test on a few PDFs first. To rebuild, drop `silver_pdfs` and rerun.
