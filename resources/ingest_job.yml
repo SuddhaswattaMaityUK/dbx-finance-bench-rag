@@ -32,6 +32,7 @@ resources:
         - task_key: silver_parser
           depends_on:
             - task_key: bronze_pdfs
+          environment_key: default  # gives the notebook the pymupdf dependency
           notebook_task:
             notebook_path: ../src/silver_pdfs.ipynb
             base_parameters:
