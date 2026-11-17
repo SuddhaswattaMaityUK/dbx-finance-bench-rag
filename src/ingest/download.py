@@ -1,9 +1,9 @@
 """Ingest raw FinanceBench PDFs into a Unity Catalog volume.
 
-Creates the schema and `docs` volume if they don't exist, then downloads every PDF from the
+Creates the bronze schema and its `docs` volume if they don't exist, then downloads every PDF from the
 patronus-ai/financebench `pdfs/` folder into the volume. Files already in the volume are skipped.
 
-Usage: python download.py --catalog <catalog> --schema <schema> [--match <regex>] [--limit <n>]
+Usage: python download.py --catalog <catalog> --bronze-schema <schema> [--match <regex>] [--limit <n>]
 
 `--match` keeps only the PDFs whose file name matches the regex, and `--limit` keeps only the first n of
 those (0 = all). Dev uses them to download a small sample.
@@ -30,11 +30,11 @@ PDF_LIST_URL = "https://api.github.com/repos/patronus-ai/financebench/contents/p
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", required=True)
-    parser.add_argument("--schema", required=True)
+    parser.add_argument("--bronze-schema", required=True)
     parser.add_argument("--match", default=".*", help="only PDFs whose file name matches this regex")
     parser.add_argument("--limit", type=int, default=0, help="only the first n PDFs (0 = all)")
     args = parser.parse_args()
-    catalog, schema = args.catalog, args.schema
+    catalog, schema = args.catalog, args.bronze_schema
 
     log.info("Target: catalog=%s schema=%s", catalog, schema)
     spark = SparkSession.builder.getOrCreate()

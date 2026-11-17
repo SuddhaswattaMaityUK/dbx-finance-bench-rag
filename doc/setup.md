@@ -75,20 +75,23 @@ Never commit directly to `master`.
 4. Grant the service principal access to Unity Catalog. Run this once in a SQL editor as the catalog owner (use the service principal's **Application ID** in backticks, not its display name):
 
 ```sql
--- Schema the ingestion job writes to
-CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_rag;
+-- One schema per layer; the jobs create them if they are missing (CREATE SCHEMA below)
+CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_bronze;
+CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_silver;
 
 GRANT USE CATALOG ON CATALOG workspace TO `<client-id>`;
 GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
-  ON SCHEMA workspace.finance_bench_rag TO `<client-id>`;
+  ON SCHEMA workspace.finance_bench_bronze TO `<client-id>`;
+GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
+  ON SCHEMA workspace.finance_bench_silver TO `<client-id>`;
 ```
 
-   The dev target writes to its own schema, `finance_bench_rag_dev`, which the `download` task creates (`CREATE SCHEMA IF NOT EXISTS`). For that, the service principal also needs `CREATE SCHEMA` on the catalog:
+   The dev target writes to its own schemas, `finance_bench_bronze_dev` and `finance_bench_silver_dev`, which the `download` task and the silver tasks create (`CREATE SCHEMA IF NOT EXISTS`). For that, the service principal also needs `CREATE SCHEMA` on the catalog:
 
    ```sql
    GRANT CREATE SCHEMA ON CATALOG workspace TO `<client-id>`;
    ```
 
-   Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `catalog` or `schema` variables in [databricks.yml](../databricks.yml), change them here too.
+   Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `catalog`, `bronze_schema` or `silver_schema` variables in [databricks.yml](../databricks.yml), change them here too.
 
 5. Protect `master` (Settings > Branches) so changes only land through pull requests.

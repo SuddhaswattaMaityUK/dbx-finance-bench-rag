@@ -10,4 +10,5 @@ resources:
             notebook_path: ../src/validate/validate_silver.ipynb
             base_parameters:
               catalog: ${var.catalog}
-              schema: ${var.schema}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}

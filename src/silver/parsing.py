@@ -5,7 +5,7 @@ import json
 from pyspark.sql import functions as F
 
 from checks import check_parse, content_pages
-from tables import insert_new
+from names import insert_new
 
 
 def parse_docs(spark, n, df):

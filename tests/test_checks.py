@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "silver"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "ingest"))
 
 from checks import check_parse, clean_page, content_pages, page_id  # noqa: E402
 from splitting import part_ranges, split_pdf  # noqa: E402

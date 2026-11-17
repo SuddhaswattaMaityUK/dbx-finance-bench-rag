@@ -25,7 +25,7 @@ The load is idempotent: the script was rerun after the first pass had already do
 
 ## Running it
 
-The job `ingest_financebench` is defined in [resources/ingest_job.yml](../../resources/ingest_job.yml). It runs on serverless compute and receives `--catalog` and `--schema` from the bundle variables in [databricks.yml](../../databricks.yml).
+The job `ingest_financebench` is defined in [resources/ingest_job.yml](../../resources/ingest_job.yml). It runs on serverless compute and receives `--catalog` and `--bronze-schema` from the bundle variables in [databricks.yml](../../databricks.yml).
 
 ```bash
 databricks bundle deploy -t dev
