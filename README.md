@@ -124,6 +124,7 @@ These are real problems hit while building and testing the layer.
 | 9 | Some PDFs cannot be parsed at all: `ai_parse_document` rejects PDFs over 500 pages and sometimes fails a conversion | Such a document has no elements, so it never produces a part. In the first full run these were picked first in every batch, a batch stored nothing and the loop stopped with 189 convertible documents left | Step 3 only picks documents with parsed elements, and lists the skipped ones with the parser's reason |
 | 10 | Calls could run one after another when few partitions held the parts | Slow conversion | `repartition(32)` spreads the calls over the workers |
 | 11 | The model repeats or skips `<!-- page N -->` markers (found by checking all 359 documents: 151 had a different marker count than pages, off by 1 to 11) | Page numbers in the Markdown cannot be trusted | Validate every part's markers against its page numbers. Redo a bad part one page per call and stitch it in code. A part that still fails is not stored and is retried |
+| 12 | `ai_parse_document` failed on some pages: `Request rate limit exceeded` (2,815 pages in 53 documents) and `Internal error` (365 pages in 11 documents). Found with the inspection notebook | About 6% of the pages (3,180 of 49,965 in the converted documents) have no content, so they are missing from the Markdown. PepsiCo 2018 lost 278 of 479 pages | Not fixed yet. Planned: re-parse the affected documents with lower parallelism and rerun their conversion |
 
 ### Results
 
@@ -135,7 +136,7 @@ Quality check on three filings in the dev job. Every part completed, and each Ma
 | Boeing 2022 10-K | 190 | 115 | 115 | 39 / 39 | 335k |
 | Corning 2015 10-K | 273 | 270 | 270 | 90 / 90 | 922k |
 
-- One `<!-- page N -->` marker per page that had parsed content. The parser returns no elements for some pages (for example blank or image-only pages), so the PDF page count can be higher.
+- One `<!-- page N -->` marker per page that had parsed content. The PDF page count is higher than the pages with content because `ai_parse_document` failed on some pages with `Request rate limit exceeded` or `Internal error` (found with the inspection notebook; see challenge 12). Those pages are missing from the Markdown.
 - Headings and Markdown tables are present in all three.
 
 **Full run.** The first full run of the batch loop converted 142 documents in three batches (8,060 parts, no failed calls) before it stopped on the unparseable PDFs (challenge 9). After the fix, the next run converted the remaining 189 documents in four batches. See the totals below.

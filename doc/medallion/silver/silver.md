@@ -109,6 +109,7 @@ These are real problems hit while building and testing the layer.
 | 9 | Some PDFs cannot be parsed at all: `ai_parse_document` rejects PDFs over 500 pages (for example the PepsiCo 10-Ks) and sometimes fails a conversion | Such a document has no elements, so it never produces a part. In the first full run these were picked first in every batch, a batch stored nothing and the loop stopped with 189 convertible documents left | Step 3 only picks documents that have parsed elements, and lists the skipped ones with the parser's reason |
 | 10 | Calls could run one after another if few partitions held the parts | Slow step 3 | `repartition(32)` spreads the calls over the workers |
 | 11 | The model repeats or skips `<!-- page N -->` markers (151 of 359 documents had a different marker count than pages) | Page numbers in the Markdown cannot be trusted | Validate each part's markers, redo bad parts page by page, stitch in code |
+| 12 | `ai_parse_document` failed on some pages: `Request rate limit exceeded` (2,815 pages in 53 documents) and `Internal error` (365 pages in 11 documents). Found with the inspection notebook | About 6% of the pages (3,180 of 49,965 in the converted documents) have no content, so they are missing from the Markdown. PepsiCo 2018 lost 278 of 479 pages | Not fixed yet. Planned: re-parse the affected documents with lower parallelism and rerun their conversion |
 
 ## Verified results
 
@@ -120,7 +121,7 @@ Tested in the `dev` job on three filings. Every part completed and the Markdown 
 | Boeing 2022 10-K | 190 | 115 | 115 | 39 / 39 | 335k |
 | Corning 2015 10-K | 273 | 270 | 270 | 90 / 90 | 922k |
 
-- One `<!-- page N -->` marker per page that had parsed content. The parser returns no elements for some pages (for example blank or image-only pages), so the PDF page count can be higher.
+- One `<!-- page N -->` marker per page that had parsed content. The PDF page count is higher than the pages with content because `ai_parse_document` failed on some pages with `Request rate limit exceeded` or `Internal error` (found with the inspection notebook; see challenge 12). Those pages are missing from the Markdown.
 - Headings and Markdown tables are present in all three.
 - The three-document test took about 3 minutes in step 3 before the `repartition` change.
 

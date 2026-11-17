@@ -61,7 +61,7 @@ silver_pdfs.parsed --split into parts + ai_query--> silver_pdfs.parts --join--> 
 
 - **How it works:** the `---` between parts is added in code and is exact. Inside a part, the model writes `<!-- page N -->` and `---` between the pages.
 - **Check:** count the `<!-- page N -->` markers per document and compare with the number of pages that have parsed content (dev run: they matched exactly for the three documents checked).
-- **Note:** `ai_parse_document` can return no elements for some pages (blank or image-only), so the marker count can be lower than the PDF page count.
+- **Note:** `ai_parse_document` fails on some pages (`Request rate limit exceeded`, `Internal error`), so the marker count can be lower than the PDF page count. Those pages are missing from the Markdown. See the README, challenge 12.
 
 ### 7. Cost and runtime
 
