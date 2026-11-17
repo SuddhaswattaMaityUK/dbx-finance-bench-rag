@@ -1,0 +1,20 @@
+resources:
+  jobs:
+    financebench_pipeline:
+      name: financebench_pipeline
+      # The whole flow as one unit: one run, one schedule, one place to see failures.
+      # Each step is its own job, so it can still be run and tested alone.
+      # To add indexing: create the job (resources/indexing_job.yml) and add a task after validation:
+      #   - task_key: indexing
+      #     depends_on: [{task_key: validation}]
+      #     run_job_task: {job_id: ${resources.jobs.indexing.id}}
+      tasks:
+        - task_key: ingestion
+          run_job_task:
+            job_id: ${resources.jobs.ingest_financebench.id}
+
+        - task_key: validation
+          depends_on:
+            - task_key: ingestion
+          run_job_task:
+            job_id: ${resources.jobs.validate_silver.id}
