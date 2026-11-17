@@ -31,10 +31,20 @@ resources:
               catalog: ${var.catalog}
               schema: ${var.schema}
 
-        # Silver: parse and check, retry the failed parses, convert the pages. Each task can run on its own.
-        - task_key: silver_parse
+        # Silver: cut the long PDFs into parts, parse and check, retry the failed parses, convert the pages. Each task can run on its own.
+        - task_key: silver_split
           depends_on:
             - task_key: bronze_pdfs
+          notebook_task:
+            notebook_path: ../src/silver/split_pdfs.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${var.schema}
+              part_pages: ${var.part_pages}
+
+        - task_key: silver_parse
+          depends_on:
+            - task_key: silver_split
           notebook_task:
             notebook_path: ../src/silver/parse_pdfs.ipynb
             base_parameters:
