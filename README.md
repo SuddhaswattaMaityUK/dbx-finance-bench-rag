@@ -11,9 +11,9 @@ flowchart LR
     A[FinanceBench PDFs] -->|download| V[(UC volume<br/>pdfs/)]
     V -->|Auto Loader| B[(bronze_pdfs<br/>raw bytes)]
     B -->|"split into parts<br/>of 50 pages"| T[("bronze_pdf_parts")]
-    T -->|"readStream<br/>ai_parse_document + check"| P[("silver_parsed<br/>good parses")]
+    T -->|"ai_parse_document + check<br/>the parts still missing"| P[("silver_parsed<br/>good parses")]
     T -->|"bad parse"| L[("silver_log<br/>why, retry?")]
-    L -->|"retry"| P
+    L -.->|"next run: parse again"| T
     P -->|"chunk: structured, fixed<br/>embed once"| G[("gold_children<br/>gold_parents")]
     G -.->|"by hand"| R["test_retrieval<br/>index, score, teardown"]
 ```
@@ -22,12 +22,12 @@ flowchart LR
 | --- | --- | --- | --- |
 | Download | `download` | PDFs in a Unity Catalog volume | Done |
 | Bronze | `bronze_pdfs`, `bronze_split` | Tables `bronze_pdfs` (raw PDF bytes) and `bronze_pdf_parts` (the PDFs cut into parts of up to 50 pages) | Done |
-| Silver | `silver_parse`, `silver_retry` | Tables `silver_parsed` (the parser's **elements**: headings, text, tables as HTML, each with its page) and `silver_log`, and the view `silver_failures` | Built and tested in dev. Prod data: 366 of 368 PDFs fully parsed (see [results](#results)) |
+| Silver | `silver_parse` | Tables `silver_parsed` (the parser's **elements**: headings, text, tables as HTML, each with its page) and `silver_log`, and the view `silver_failures` | Built and tested in dev. Prod data: 366 of 368 PDFs fully parsed (see [results](#results)) |
 | Validation | `validate_silver` (separate job) | A pass or fail check of the tables, and what is still open | Done |
 | Gold | `chunk_structured`, `chunk_fixed`, `embed` (job `indexing`) | Tables `gold_children` (searched, with the embeddings) and `gold_parents` (what the LLM reads) | Built and unit-tested, not run on Databricks yet (see [gold.md](doc/medallion/gold/gold.md)) |
 | Retrieval test | `test_retrieval` (separate job, one notebook, run by hand) | Scores in `test_retrieval_results`. Creates the Vector Search index and deletes it again | Built, not run on Databricks yet (see [test_retrieval.md](doc/retrieval/test_retrieval.md)) |
 
-The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`, `silver_retry`. The job `financebench_pipeline` runs ingestion, validation, then `indexing`.
+The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`. The job `financebench_pipeline` runs ingestion, validation, then `indexing`.
 
 Gold reads the parser's elements in `silver_parsed`. Silver used to convert every page to Markdown with a model (`ai_query`); that step was removed, see [why](#why-there-is-no-markdown-step).
 
@@ -38,14 +38,14 @@ Every task is **safe to rerun**: each one remembers what it has already done and
 ```
 databricks.yml              bundle: variables and the dev and prod targets
 resources/
-  ingest_job.yml            job ingest_financebench: download, bronze_pdfs, bronze_split, silver_parse, silver_retry
+  ingest_job.yml            job ingest_financebench: download, bronze_pdfs, bronze_split, silver_parse
   financebench_pipeline_job.yml  job financebench_pipeline: ingestion, then validation
   validate_job.yml          job validate_silver: a separate pipeline that checks the tables
 src/
   common/                   names.py (table and path names of both layers, the insert helper)
   bronze/                   BRONZE: download.py, bronze_pdfs.ipynb, split_pdfs.ipynb
                             splitting.py (cut a PDF into parts), bronze_tables.py (the parts table)
-  silver/                   SILVER: parse_pdfs.ipynb, retry_parses.ipynb
+  silver/                   SILVER: parse_pdfs.ipynb
                             checks.py (checks on parser output, plain Python)
                             silver_tables.py (tables and views), parsing.py (parse and file a part)
   validate/                 validate_silver.ipynb
@@ -91,13 +91,13 @@ Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 
 ## 3. Silver: PDFs to parsed elements
 
-Parses each filing with `ai_parse_document` into **typed elements** (title, section header, text, table as HTML, page header, ...), each with its page, and checks every parse. Gold chunks these elements directly. The code is in [src/silver/](src/silver/): two small notebooks (`parse_pdfs`, `retry_parses`, each with an explanation of its stage and able to run on its own) and three short Python modules. The checks on parser output are in [src/silver/checks.py](src/silver/checks.py), and they are unit-tested.
+Parses each filing with `ai_parse_document` into **typed elements** (title, section header, text, table as HTML, page header, ...), each with its page, and checks every parse. Gold chunks these elements directly. The code is in [src/silver/](src/silver/): one notebook (`parse_pdfs`, with an explanation of the stage, able to run on its own) and three short Python modules. The checks on parser output are in [src/silver/checks.py](src/silver/checks.py), and they are unit-tested.
 
 The design follows three rules:
 
 1. **Check every result, and keep the bad ones apart.** A parse that is incomplete never goes into the good table. It goes to `silver_log`, with the reason and whether a retry makes sense.
 2. **Every stage can run again.** Each stage works out what is still missing and does only that. A rerun, a retry and a recovery after a crash are the same code, and nothing already stored is paid for twice.
-3. **Small steps, no budgets.** Each run does everything that is missing. Retries are paced (a pause between parts, a stop when the service keeps failing), so a failed run loses little and the next run continues.
+3. **Small steps, no budgets.** Each run does everything that is missing, and a part whose parse failed is parsed again by the next run: there is no separate retry task. Parsing is paced (two PDFs at a time, a pause between batches, a stop when the service keeps failing), so a failed run loses little and the next run continues.
 
 ### Tables
 
@@ -113,21 +113,20 @@ The design follows three rules:
 flowchart TD
     B[(bronze_pdfs)] --> X["Split: PDFs over 50 pages<br/>into parts of 50 pages"]
     X --> T[(bronze_pdf_parts)]
-    T --> S{{"Stream, 2 files per batch<br/>skips parts already recorded"}}
+    T --> S{{"The parts still missing:<br/>not parsed, not given up on<br/>2 PDFs per batch"}}
     S --> A["ai_parse_document (once per part)"]
     A --> C{"Check the parse"}
     C -- "complete" --> P[(silver_parsed)]
     C -- "pages failed (rate limit, internal error)" --> L1["silver_log: retryable"]
     C -- "conversion failed" --> L2["silver_log: not retryable"]
-    L1 --> R["Retry: same function, one part at a time,<br/>pause, stop on repeated failure"]
-    R --> C
+    L1 -.->|"next run"| S
 ```
 
 1. **Split (bronze).** Every PDF with more than 50 pages is cut into parts of at most 50 pages ([splitting.py](src/bronze/splitting.py)), and the bytes of each part go to `bronze_pdf_parts` with the part's `page_offset`. Cutting does not change the content, so the parts are still raw bytes and belong in bronze. Silver only ever sees parts. The real page number of an element is `page_offset + page_id + 1`.
-2. **Parse (stream).** `ai_parse_document` runs once per part, two files per micro-batch. `check_parse` is a short Python function: a parse is good if it has elements and no page errors. A good parse goes to `silver_parsed`. A bad one goes to `silver_log`, marked retryable (temporary page errors) or not (a failed conversion).
-3. **Retry.** Retryable parse failures are parsed again with the same function, one part at a time, cheapest first, with a pause between parts. A retry costs at most 50 parse pages. Two failures in a row stop the retries for the run. After `max_attempts` a part is left alone, and it stays visible in `silver_failures`.
+2. **Parse what is missing.** A part is missing when it is not in `silver_parsed` and has not been given up on. `ai_parse_document` runs once per missing part, two PDFs at a time. `check_parse` is a short Python function: a parse is good if it has elements and no page errors. A good parse goes to `silver_parsed`. A bad one goes to `silver_log`, marked retryable (temporary page errors) or not (a failed conversion).
+3. **Retry = the next run.** A part that failed is still missing, so the next run parses it again with the same function. It is not tried again in the same run, so a busy service is not hit straight away. A retry costs at most one part, which is 50 parse pages. A failure that is not retryable is never tried again, and after `max_attempts` a part is left alone. Both stay visible in `silver_failures`. Two batches in a row that store nothing stop the run.
 
-**Using the stream's error handling.** A stream records finished micro-batches in its checkpoint. A failed batch does not move the checkpoint, so the next run restarts at that batch. The one thing a restarted batch must not do is parse the same PDFs again (that is billed), so every batch first skips the parts already in `silver_parsed` or `silver_log`. A restart then costs almost nothing.
+**No stream, no checkpoint.** An earlier version read `bronze_pdf_parts` as a stream. A stream sees each row once, so a failed part could not come back and needed its own retry task. The tables now say what is missing, so a rerun, a retry and a recovery after a crash are the same code, and a restart costs almost nothing: parts already in `silver_parsed` are never parsed (billed) again.
 
 ### Example
 
@@ -157,10 +156,10 @@ Checked against the PDFs' own text, the parser is accurate: on 12 evidence pages
 | # | Challenge | Solution |
 | --- | --- | --- |
 | 1 | `ai_parse_document` answered some pages with `Request rate limit exceeded` or `Internal error` (3,180 of 49,965 pages, in 55 PDFs), because 10 PDFs were parsed at once. Those pages had no content | Cut long PDFs into parts of 50 pages (a test PDF that lost 27 pages whole parsed completely in 4 parts). Check every parse. Never store an incomplete one: log it as retryable and parse it again later. Parse 2 files at a time |
-| 2 | A failure late in a long run must not lose finished work, and a rerun must not pay for it again | Every stage only does what is missing. The stream's checkpoint and the skip of recorded parts mean a restart costs almost nothing |
+| 2 | A failure late in a long run must not lose finished work, and a rerun must not pay for it again | Every stage only does what is missing, so a restart costs almost nothing: a part already in `silver_parsed` is never parsed again |
 | 3 | A part that can never succeed would retry forever | The attempt number is in the log. After `max_attempts` it is left alone and listed in `silver_failures` |
 | 4 | `ai_parse_document` rejects PDFs over 500 pages (8 filings) and sometimes fails a conversion (1) | The split makes the large PDFs parseable. A failed conversion is logged as not retryable |
-| 5 | A limited quota (the free tier) | Small batches, a pause between retries, a stop when the service keeps failing, and an attempt cap per part |
+| 5 | A limited quota (the free tier) | Small batches, a pause between batches, a stop when the service keeps failing, and an attempt cap per part |
 
 ### Look at the open problems
 
@@ -189,7 +188,7 @@ Before the split, 304 PDFs parsed, 55 lost pages to the parser's rate limit and 
 
 ### Limits and next steps
 
-- **Cost:** `ai_parse_document` is billed per page. A part that parses completely is never parsed again, and a retry costs at most 50 parse pages.
+- **Cost:** `ai_parse_document` is billed per page. A part that parses completely is never parsed again, and a retry (the next run) costs at most 50 parse pages.
 - **Two PDFs have no parse:** the INTEL 8-Ks that fail with `Document conversion failed` in the parser. The split made the 8 PDFs over 500 pages parseable.
 - **Changed or deleted PDFs:** not handled. Bronze tracks files by path, and silver keeps rows of deleted files. See [happy_unhappy_path.md](doc/medallion/silver/happy_unhappy_path.md).
 - **Parser accuracy** was checked on a sample against the PDFs, not on all of them.
@@ -199,7 +198,7 @@ Before the split, 304 PDFs parsed, 55 lost pages to the parser's rate limit and 
 
 ```bash
 databricks bundle deploy -t dev                       # CI does this on every push
-databricks bundle run ingest_financebench -t dev      # download, bronze (load, split), silver (parse, retry)
+databricks bundle run ingest_financebench -t dev      # download, bronze (load, split), silver (parse)
 databricks bundle run validate_silver -t dev          # check the tables (a separate pipeline)
 databricks bundle run indexing -t dev                 # gold: chunk (both strategies), embed what has no vector
 databricks bundle run test_retrieval -t dev           # by hand: index, FinanceBench scores, teardown (the endpoint is billed hourly)
@@ -212,14 +211,14 @@ Silver parameters (notebook widgets, set by the bundle variables):
 | --- | --- | --- | --- |
 | `catalog`, `bronze_schema`, `silver_schema` | all | `workspace`, per layer and target | From the bundle variables |
 | `part_pages` | `bronze_split` | `50` | PDFs with more pages are cut into parts of this size |
-| `max_files_per_batch` | `silver_parse` | `2` | Files of parts parsed at once by the stream (one PDF is one file) |
-| `max_attempts` | `silver_retry` | `3` | A part is given up on after this many failed attempts |
-| `retry_pause_seconds` | `silver_retry` | `10` | Pause between retried parts |
+| `pdfs_per_batch` | `silver_parse` | `2` | PDFs parsed at once (all their missing parts) |
+| `max_attempts` | `silver_parse` | `3` | A part is given up on after this many failed parses |
+| `batch_pause_seconds` | `silver_parse` | `5` | Pause between batches |
 
 To look before you spend, query `silver_failures` (see [silver.md](doc/medallion/silver/silver.md)).
 
-- **Rerun or redeploy:** safe. The stream skips recorded PDFs, and the retry only takes open retryable failures.
-- **Silver rebuild:** drop the silver schema (it also holds the stream's checkpoint volume) and run. This parses everything again, which spends quota. Bronze is not touched.
+- **Rerun or redeploy:** safe. Only the parts that are missing are parsed: new ones, and failures that are retryable and have attempts left.
+- **Silver rebuild:** drop the silver tables (or the schema) and run. This parses everything again, which spends quota. Bronze is not touched.
 - **Bronze rebuild:** drop the bronze schema and run. The PDFs are downloaded again (free), and the parts are cut again. Deleting only the tables leaves the checkpoint, so nothing would be reparsed.
 
 ## More documentation

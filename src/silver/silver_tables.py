@@ -4,7 +4,6 @@
 def create_silver_tables(spark, n):
     """Create the silver schema, tables and view if they do not exist. Safe to run again, so every task can call it."""
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {n.catalog}.{n.silver_schema}")
-    spark.sql(f"CREATE VOLUME IF NOT EXISTS {n.catalog}.{n.silver_schema}.checkpoints")  # the stream's checkpoint
     spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {n.parsed} (
       path STRING, part_no INT, page_offset INT, parsed VARIANT, pdf_pages INT, pages INT, parsed_at TIMESTAMP
