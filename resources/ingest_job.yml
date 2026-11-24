@@ -13,10 +13,6 @@ resources:
           spark_python_task:
             python_file: ../src/bronze/download.py
             parameters:
-              - --catalog
-              - ${var.catalog}
-              - --bronze-schema
-              - ${var.bronze_schema}
               - --match
               - ${var.pdf_match}
               - --limit
@@ -27,28 +23,24 @@ resources:
             - task_key: download
           notebook_task:
             notebook_path: ../src/bronze/bronze_pdfs.ipynb
-            base_parameters:
-              catalog: ${var.catalog}
-              bronze_schema: ${var.bronze_schema}
 
-        # Bronze, second step: cut the long PDFs into parts of at most part_pages pages.
+        # Bronze, second step: cut the long PDFs into parts of at most PART_PAGES pages.
         - task_key: bronze_split
           depends_on:
             - task_key: bronze_pdfs
           notebook_task:
             notebook_path: ../src/bronze/split_pdfs.ipynb
-            base_parameters:
-              catalog: ${var.catalog}
-              bronze_schema: ${var.bronze_schema}
-              part_pages: ${var.part_pages}
 
-        # Silver: the AI parser on the parts it has not seen (a stream with a checkpoint). retry_failed=true parses the failed parts again.
+        # Silver: the AI parser on the parts it has not seen (a stream with a checkpoint). Its constants are in the notebook.
         - task_key: silver_parse
           depends_on:
             - task_key: bronze_split
           notebook_task:
             notebook_path: ../src/silver/parse_pdfs.ipynb
-            base_parameters:
-              catalog: ${var.catalog}
-              bronze_schema: ${var.bronze_schema}
-              silver_schema: ${var.silver_schema}
+
+        # Gold: parent-child chunks, a stream on silver_parsed. Documents with new parts are chunked again and replaced.
+        - task_key: gold_chunk
+          depends_on:
+            - task_key: silver_parse
+          notebook_task:
+            notebook_path: ../src/gold/chunk.ipynb

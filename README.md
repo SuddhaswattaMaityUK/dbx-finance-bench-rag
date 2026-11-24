@@ -1,6 +1,6 @@
 # dbx-finance-bench-rag
 
-A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings: 368 SEC filings (10-Ks, 10-Qs, 8-Ks), most of them 100 to 300 pages long. The repository is being **rebuilt from the bottom up**. What exists today is the ingestion (getting the PDFs into Delta tables and cutting them into parts) and the first silver step, parsing the parts with the AI parser as a stream. Chunking and retrieval come next, one layer at a time.
+A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings: 368 SEC filings (10-Ks, 10-Qs, 8-Ks), most of them 100 to 300 pages long. The repository is being **rebuilt from the bottom up**. What exists today is the ingestion (getting the PDFs into Delta tables and cutting them into parts) the silver step, parsing the parts with the AI parser as a stream, and the gold step, parent-child chunks. Embeddings and retrieval come next, one layer at a time.
 
 Everything is a Databricks Asset Bundle. Pushing a branch deploys it to `dev`, and merging to `master` deploys it to `prod` (see [doc/setup.md](doc/setup.md#4-cicd-with-github-actions)).
 
@@ -12,8 +12,8 @@ flowchart LR
     V -->|Auto Loader| B[(bronze_pdfs<br/>raw bytes)]
     B -->|"split into parts<br/>of 50 pages"| T[("bronze_pdf_parts")]
     T -->|"ai_parse_document"| S[("silver_parsed<br/>parsed elements")]
-    S -.->|next| G["gold: chunks"]
-    G -.-> R["retrieval"]
+    S -->|"sections, LangChain splitter"| G[("gold_parents<br/>gold_children")]
+    G -.->|next| R["embeddings, retrieval"]
 ```
 
 | Layer | Task | Output | Status |
@@ -21,10 +21,10 @@ flowchart LR
 | Download | `download` | PDFs in a Unity Catalog volume | Done |
 | Bronze | `bronze_pdfs`, `bronze_split` | Tables `bronze_pdfs` (raw PDF bytes) and `bronze_pdf_parts` (the PDFs cut into parts of up to 50 pages) | Done |
 | Silver | `silver_parse` | Table `silver_parsed`: the parser's elements (headings, text, tables as HTML, each with its page) for every part | Written, not run on Databricks yet |
-| Gold | | Chunks and embeddings | Not started |
+| Gold | `gold_chunk` | Tables `gold_parents` (one per section) and `gold_children` (pieces of about 2,000 characters, and one per table) | Written, not run on Databricks yet |
 | Retrieval | | Search over the chunks, and a score on FinanceBench's questions | Not started |
 
-The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`.
+The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`, `gold_chunk`.
 
 Every task is **safe to rerun**: each one remembers what it has already done and only processes what is new.
 
@@ -33,11 +33,12 @@ Every task is **safe to rerun**: each one remembers what it has already done and
 ```
 databricks.yml              bundle: variables and the dev and prod targets
 resources/
-  ingest_job.yml            job ingest_financebench: download, bronze_pdfs, bronze_split, silver_parse
+  ingest_job.yml            job ingest_financebench: download, bronze_pdfs, bronze_split, silver_parse, gold_chunk
 src/
   bronze/                   BRONZE: download.py, bronze_pdfs.ipynb, split_pdfs.ipynb
                             splitting.py (cut a PDF into parts)
   silver/                   SILVER: parse_pdfs.ipynb (the AI parser on every part, one notebook)
+  gold/                     GOLD: chunk.ipynb (parent-child chunks with LangChain)
 tests/                      test_splitting.py (pytest, no Databricks needed)
 doc/                        setup, one page per step
 .github/workflows/          deploy-dev, deploy-prod, test
@@ -51,15 +52,16 @@ Dev and prod use the **same** schemas, so there is one set of tables instead of 
 | --- | --- | --- |
 | Bronze schema | `workspace.finance_bench_bronze` | `workspace.finance_bench_bronze` |
 | Silver schema | `workspace.finance_bench_silver` | `workspace.finance_bench_silver` |
+| Gold schema | `workspace.finance_bench_gold` | `workspace.finance_bench_gold` |
 | PDFs | 28 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
 
-The values are bundle variables in [databricks.yml](databricks.yml). Job names and notebooks are still separate per target (dev jobs are prefixed with `[dev <user>]`).
+The schemas are constants in the notebooks, and the dev sample is the bundle variables `pdf_match` and `pdf_limit` in [databricks.yml](databricks.yml). Job names and notebooks are still separate per target (dev jobs are prefixed with `[dev <user>]`).
 
 **What sharing means.** A dev run is a real run: it writes to the real tables. Pushing a branch only deploys, and nothing runs until someone runs a job. So do not run the same job in dev and in prod at the same time: they would parse the same parts twice, and parsing is billed.
 
 ## 1. Download
 
-Downloads all FinanceBench PDFs into the volume `/Volumes/<catalog>/<bronze_schema>/docs/pdfs/`. Files already in the volume are skipped.
+Downloads all FinanceBench PDFs into the volume `/Volumes/workspace/finance_bench_bronze/docs/pdfs/`. Files already in the volume are skipped.
 
 Details: [doc/download/download.md](doc/download/download.md)
 
@@ -71,7 +73,11 @@ Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 
 ## 3. Silver: the AI parser
 
-Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so each run only parses new parts), runs `ai_parse_document` on every part and saves the parser's output in `silver_parsed`, one row per part, with the document name (`doc_name`, such as `3M_2018_10K`, from the file name). The notebook creates the catalog and schema, the table and the checkpoint volume if they do not exist. Only a complete parse is saved (it has elements and no page errors). A part that failed is not saved, and a normal run does not try it again, because the stream has read it once. To parse the failed parts again, run with `retry_failed = true`: the checkpoint is reset, and the parts already saved are skipped. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
+Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so each run only parses new parts), runs `ai_parse_document` on every part and saves the parser's output in `silver_parsed`, one row per part, with the document name (`doc_name`, such as `3M_2018_10K`, from the file name). The notebook creates the catalog and schema, the table and the checkpoint volume if they do not exist. Its names and settings are constants hardcoded in the notebook's second cell, not job parameters. Failures are not handled: if a parse fails, the task fails. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
+
+## 4. Gold: parent-child chunks
+
+Cuts the parsed elements into **parents** and **children**. A parent is a section: a new one starts at every title or section header, and it holds the section's text, tables and figure descriptions (page headers, footers and page numbers are dropped). It is what the LLM reads. The children are what is embedded and searched: the section's text cut by LangChain's `RecursiveCharacterTextSplitter` (about 2,000 characters, 200 overlap) in a pandas UDF, plus one child per table, never cut. Each child starts with its document and section header and keeps its `parent_id` and pages. It is a stream on `silver_parsed`: a run takes the parts that are new since the last run, chunks their documents again from all their parts (a section can cross parts) and replaces only those documents' rows in `gold_parents` and `gold_children`. The notebook is [src/gold/chunk.ipynb](src/gold/chunk.ipynb).
 
 ## Run it
 
@@ -81,18 +87,16 @@ databricks bundle run ingest_financebench -t dev      # download, bronze (load, 
 python -m pytest                                      # unit tests, no Databricks needed
 ```
 
-Parameters (notebook widgets, set by the bundle variables):
+Every name and setting (`CATALOG`, the schemas, `PART_PAGES`, `PDFS_PER_BATCH`, `CHUNK_SIZE`, ...) is a constant hardcoded at the top of its notebook or script ([doc/code_standard.md](doc/code_standard.md)). To change one, change it there. The only parameters are the dev sample, because dev and prod need different values:
 
-| Widget | Task | Default | Meaning |
+| Bundle variable | Task | Default | Meaning |
 | --- | --- | --- | --- |
-| `catalog`, `bronze_schema` | all | `workspace`, `finance_bench_bronze` | From the bundle variables |
 | `pdf_match`, `pdf_limit` | `download` | `.*`, `0` (dev: `EARNINGS`, `28`) | Download only the PDFs whose name matches, and only the first n (0 = all) |
-| `part_pages` | `bronze_split` | `50` | PDFs with more pages are cut into parts of this size |
-| `silver_schema` | `silver_parse` | `finance_bench_silver` | Where `silver_parsed` is saved |
-| `pdfs_per_batch` | `silver_parse` | `2` | PDFs parsed at once. Small, so the parser's rate limit is not hit |
-| `retry_failed` | `silver_parse` | `false` | `true` resets the checkpoint, so the stream reads every part again. Saved parts are skipped |
+
+Failures are not handled: a download, a PDF that cannot be cut or a parse that fails makes its task fail. Fix the cause and rerun.
 
 - **Rerun or redeploy:** safe. Files already downloaded, loaded, cut or parsed are skipped.
+- **Gold rebuild:** drop `gold_parents`, `gold_children` and the volume `checkpoints` in the gold schema, and run. Free: nothing is parsed again.
 - **Silver rebuild:** drop `silver_parsed` and its checkpoint (the volume `checkpoints` in the silver schema) and run. This parses every part again, which is billed per page. Bronze is not touched.
 - **Bronze rebuild:** drop the bronze schema and run. The PDFs are downloaded again (free), and the parts are cut again. Deleting only the tables leaves the Auto Loader checkpoint, so nothing would be reloaded.
 
@@ -100,6 +104,7 @@ Parameters (notebook widgets, set by the bundle variables):
 
 | Doc | Contents |
 | --- | --- |
+| [doc/code_standard.md](doc/code_standard.md) | How code is written here: notebook cell order, constants, no failure handling |
 | [doc/setup.md](doc/setup.md) | CLI install, authentication, deploying the bundle, CI/CD, GitHub secrets, Unity Catalog grants |
 | [doc/download/download.md](doc/download/download.md) | How the PDF download works |
 | [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md) | The bronze tables, the Auto Loader load and the split |
