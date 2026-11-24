@@ -1,4 +1,4 @@
-"""Checks on parser and model output.
+"""Checks on parser output.
 
 Plain Python, no Spark: easy to read, and tested in tests/test_checks.py.
 """
@@ -7,8 +7,6 @@ import re
 
 # Parser errors that retrying cannot fix.
 PERMANENT = re.compile(r"exceeds the limit|conversion failed", re.I)
-# HTML comments, such as the page markers the model sometimes writes by itself.
-MARKER = re.compile(r"<!--.*?-->", re.S)
 
 
 def page_id(element):
@@ -31,8 +29,3 @@ def check_parse(doc):
     if errors:
         return f"{len(errors)} pages failed: {errors[0]['error_message']}", True
     return None
-
-
-def clean_page(text):
-    """The Markdown of one page without any page marker the model wrote. Empty if nothing is left."""
-    return MARKER.sub("", text or "").strip()

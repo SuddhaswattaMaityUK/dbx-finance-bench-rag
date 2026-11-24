@@ -1,4 +1,4 @@
-"""Tests for the checks on parser and model output. No Spark needed: run `pytest` from the repository root."""
+"""Tests for the checks on parser output. No Spark needed: run `pytest` from the repository root."""
 
 import sys
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "silver"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src" / "bronze"))
 
-from checks import check_parse, clean_page, content_pages, page_id  # noqa: E402
+from checks import check_parse, content_pages, page_id  # noqa: E402
 from splitting import part_ranges, split_pdf  # noqa: E402
 
 
@@ -68,23 +68,6 @@ def test_page_id_defaults_to_page_zero_without_a_box():
 
 def test_content_pages_counts_distinct_pages():
     assert content_pages(doc([element(0), element(0), element(2), element(5)])) == 3
-
-
-# --- clean_page ------------------------------------------------------------------------------------------
-
-def test_clean_page_removes_a_page_marker_the_model_wrote():
-    assert clean_page("<!-- page 16 -->\n# Credit\n\ntext\n\n<!-- page 17 -->") == "# Credit\n\ntext"
-
-
-def test_clean_page_keeps_normal_text_and_tables():
-    text = "# Title\n\n| a | b |\n| --- | --- |\n| 1 | 2 |"
-    assert clean_page(text) == text
-
-
-def test_clean_page_of_nothing_is_empty():
-    assert clean_page(None) == ""
-    assert clean_page("   \n ") == ""
-    assert clean_page("<!-- page 3 -->") == ""
 
 
 # --- splitting -------------------------------------------------------------------------------------------

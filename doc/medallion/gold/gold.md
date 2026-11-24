@@ -1,9 +1,9 @@
 # Gold layer: chunks and embeddings
 
 Gold has its own schema (`finance_bench_gold`, dev `finance_bench_gold_dev`). It is built by the job `indexing`,
-the last step of `financebench_pipeline`. It reads the **parser's elements** in `silver_parsed`, not the Markdown of
-`silver_convert`: the elements already say what is a heading and what is a table (tables as HTML), and no model
-sits between the filing and the numbers.
+the last step of `financebench_pipeline`. It reads the **parser's elements** in `silver_parsed`: they already say what is a heading and what is a table
+(tables as HTML), and no model sits between the filing and the numbers (silver used to convert the pages to Markdown
+with a model, which was removed, see the [README](../../../README.md#why-there-is-no-markdown-step)).
 
 ## Flow
 

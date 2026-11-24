@@ -16,8 +16,8 @@ flowchart LR
     G -.->|"run by hand"| TR["test_retrieval<br/>index, search, score, teardown"]
 ```
 
-- **Input:** `silver_parsed`, the parser's elements. The Markdown of `silver_convert` is not used: the elements
-  already have the headings and the tables, and no model rewrites the numbers.
+- **Input:** `silver_parsed`, the parser's elements. They already have the headings and the tables, and no model
+  rewrites the numbers (silver's Markdown conversion was removed, see the [README](../../README.md#why-there-is-no-markdown-step)).
 - **`indexing`** (in the pipeline): chunks every complete filing with both strategies and embeds the chunks.
   Everything it writes is kept.
 - **`test_retrieval`** (by hand, one notebook): builds a Vector Search index from the stored vectors, scores the
@@ -42,4 +42,3 @@ flowchart LR
 - [ ] Finding the filing from the question (company and year), for questions that do not name it
 - [ ] Reranker: a hosted model or a cross-encoder
 - [ ] Answer quality: the LLM's answer against FinanceBench's
-- [ ] Whether `silver_convert` (the Markdown) is still needed: nothing in gold uses it

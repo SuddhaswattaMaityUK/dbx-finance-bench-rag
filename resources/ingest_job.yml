@@ -42,7 +42,7 @@ resources:
               bronze_schema: ${var.bronze_schema}
               part_pages: ${var.part_pages}
 
-        # Silver: parse and check the parts, retry the failed parses, convert the pages. Each task can run on its own.
+        # Silver: parse and check the parts, retry the failed parses. Each task can run on its own.
         - task_key: silver_parse
           depends_on:
             - task_key: bronze_split
@@ -58,16 +58,6 @@ resources:
             - task_key: silver_parse
           notebook_task:
             notebook_path: ../src/silver/retry_parses.ipynb
-            base_parameters:
-              catalog: ${var.catalog}
-              bronze_schema: ${var.bronze_schema}
-              silver_schema: ${var.silver_schema}
-
-        - task_key: silver_convert
-          depends_on:
-            - task_key: silver_retry
-          notebook_task:
-            notebook_path: ../src/silver/convert_pages.ipynb
             base_parameters:
               catalog: ${var.catalog}
               bronze_schema: ${var.bronze_schema}
