@@ -41,3 +41,14 @@ resources:
               catalog: ${var.catalog}
               bronze_schema: ${var.bronze_schema}
               part_pages: ${var.part_pages}
+
+        # Silver: the AI parser on every part that is not parsed yet. A part that failed is parsed again by the next run.
+        - task_key: silver_parse
+          depends_on:
+            - task_key: bronze_split
+          notebook_task:
+            notebook_path: ../src/silver/parse_pdfs.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
