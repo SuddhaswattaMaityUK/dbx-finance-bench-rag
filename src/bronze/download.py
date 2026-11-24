@@ -37,7 +37,6 @@ def main() -> None:
 
     # Assets: the schema and the volume.
     spark = SparkSession.builder.getOrCreate()
-    spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOG}")
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {BRONZE_SCHEMA}")
     spark.sql(f"CREATE VOLUME IF NOT EXISTS {BRONZE_SCHEMA}.docs")
     os.makedirs(PDFS_DIR, exist_ok=True)

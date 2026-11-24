@@ -73,7 +73,7 @@ Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 
 ## 3. Silver: the AI parser
 
-Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so each run only parses new parts), runs `ai_parse_document` on every part and saves the parser's output in `silver_parsed`, one row per part, with the document name (`doc_name`, such as `3M_2018_10K`, from the file name). The notebook creates the catalog and schema, the table and the checkpoint volume if they do not exist. Its names and settings are constants hardcoded in the notebook's second cell, not job parameters. Failures are not handled: if a parse fails, the task fails. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
+Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so each run only parses new parts), runs `ai_parse_document` on every part and saves the parser's output in `silver_parsed`, one row per part, with the document name (`doc_name`, such as `3M_2018_10K`, from the file name). The notebook creates the schema, the table and the checkpoint volume if they do not exist (the catalog must already exist). Its names and settings are constants hardcoded in the notebook's second cell, not job parameters. Failures are not handled: if a parse fails, the task fails. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
 
 ## 4. Gold: parent-child chunks
 

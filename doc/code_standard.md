@@ -10,7 +10,7 @@ A notebook reads from top to bottom in this order of cells:
 2. **Libraries (code, only if needed).** `%pip install ...` and then `dbutils.library.restartPython()`, each in its own cell.
 3. **Imports (code).** Every import, and only imports, in one cell right after the libraries. No import appears further down.
 4. **Constants (code).** Every name, path and setting, hardcoded, in `UPPER_CASE`. No widgets and no job parameters: to change a value, change the cell.
-5. **Assets (code).** Creates what the notebook writes to: the catalog, schema, tables and volumes, each with `IF NOT EXISTS`, so a rerun changes nothing.
+5. **Assets (code).** Creates what the notebook writes to: the schema, tables and volumes, each with `IF NOT EXISTS`, so a rerun changes nothing. Never the catalog: it must already exist, and even `CREATE CATALOG IF NOT EXISTS` needs a permission the job's service principal does not have.
 6. **Steps.** One markdown cell (`## Step n: ...`, what it does and why) followed by one code cell.
 7. **Result (code).** A small query that shows what was written, such as a row count.
 
