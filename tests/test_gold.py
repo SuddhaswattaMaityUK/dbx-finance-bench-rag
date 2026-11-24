@@ -60,9 +60,20 @@ def test_clean_drops_noise_and_empty_elements():
 @pytest.mark.parametrize("type_, text, level", [
     ("section_header", "PART II", 0), ("title", "Item 7. Management's Discussion", 1), ("section_header", "Item 1A.", 1),
     ("section_header", "Liquidity", 2), ("text", "Item 7 is discussed below", None),
+    # the parser typed a short Item line as text (AmericanWaterWorks 2022): still an Item heading
+    ("text", "ITEM 6. [RESERVED]", 1), ("text", "Item 9A. - Controls and Procedures", 1),
+    # but a paragraph that starts like one is not a heading
+    ("text", "Item 7. " + "The discussion that follows explains the results. " * 5, None),
 ])
 def test_heading_level(type_, text, level):
     assert heading_level(el(1, type_, text)) == level
+
+
+def test_clean_strips_the_html_the_parser_puts_around_headings():
+    # CORNING 2020: the heading came as <u>Item 1. Business</u>, which a regex for "Item" at the start would miss
+    out = clean([el(2, "section_header", "<u>Item 1. Business</u>"), el(2, "text", "Keep <b>tags</b> in text")])
+    assert [e["content"] for e in out] == ["Item 1. Business", "Keep <b>tags</b> in text"]
+    assert heading_level(out[0]) == 1
 
 
 # --- tables -----------------------------------------------------------------------------------------------
