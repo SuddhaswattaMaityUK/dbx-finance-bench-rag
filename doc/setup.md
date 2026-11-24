@@ -82,7 +82,7 @@ CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_silver;
 GRANT USE CATALOG ON CATALOG workspace TO `<client-id>`;
 GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
   ON SCHEMA workspace.finance_bench_bronze TO `<client-id>`;
-GRANT USE SCHEMA, CREATE TABLE
+GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
   ON SCHEMA workspace.finance_bench_silver TO `<client-id>`;
 ```
 

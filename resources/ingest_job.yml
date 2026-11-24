@@ -42,7 +42,7 @@ resources:
               bronze_schema: ${var.bronze_schema}
               part_pages: ${var.part_pages}
 
-        # Silver: the AI parser on every part that is not parsed yet. A part that failed is parsed again by the next run.
+        # Silver: the AI parser on the parts it has not seen (a stream with a checkpoint). retry_failed=true parses the failed parts again.
         - task_key: silver_parse
           depends_on:
             - task_key: bronze_split

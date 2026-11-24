@@ -1,6 +1,6 @@
 # dbx-finance-bench-rag
 
-A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings: 368 SEC filings (10-Ks, 10-Qs, 8-Ks), most of them 100 to 300 pages long. The repository is being **rebuilt from the bottom up**. What exists today is the ingestion (getting the PDFs into Delta tables and cutting them into parts) and the first silver step, parsing the parts with the AI parser. Chunking and retrieval come next, one layer at a time.
+A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings: 368 SEC filings (10-Ks, 10-Qs, 8-Ks), most of them 100 to 300 pages long. The repository is being **rebuilt from the bottom up**. What exists today is the ingestion (getting the PDFs into Delta tables and cutting them into parts) and the first silver step, parsing the parts with the AI parser as a stream. Chunking and retrieval come next, one layer at a time.
 
 Everything is a Databricks Asset Bundle. Pushing a branch deploys it to `dev`, and merging to `master` deploys it to `prod` (see [doc/setup.md](doc/setup.md#4-cicd-with-github-actions)).
 
@@ -71,7 +71,7 @@ Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 
 ## 3. Silver: the AI parser
 
-Runs `ai_parse_document` on every part in `bronze_pdf_parts` and saves the parser's output in `silver_parsed`, one row per part. Only a complete parse is saved (it has elements and no page errors). A part that failed is not saved, so it is still missing and the next run parses it again: there is no retry job. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
+Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so each run only parses new parts), runs `ai_parse_document` on every part and saves the parser's output in `silver_parsed`, one row per part. Only a complete parse is saved (it has elements and no page errors). A part that failed is not saved, and a normal run does not try it again, because the stream has read it once. To parse the failed parts again, run with `retry_failed = true`: the checkpoint is reset, and the parts already saved are skipped. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
 
 ## Run it
 
@@ -90,9 +90,10 @@ Parameters (notebook widgets, set by the bundle variables):
 | `part_pages` | `bronze_split` | `50` | PDFs with more pages are cut into parts of this size |
 | `silver_schema` | `silver_parse` | `finance_bench_silver` | Where `silver_parsed` is saved |
 | `pdfs_per_batch` | `silver_parse` | `2` | PDFs parsed at once. Small, so the parser's rate limit is not hit |
+| `retry_failed` | `silver_parse` | `false` | `true` resets the checkpoint, so the stream reads every part again. Saved parts are skipped |
 
-- **Rerun or redeploy:** safe. Files already downloaded, loaded or cut are skipped.
-- **Silver rebuild:** drop `silver_parsed` and run. This parses every part again, which is billed per page. Bronze is not touched.
+- **Rerun or redeploy:** safe. Files already downloaded, loaded, cut or parsed are skipped.
+- **Silver rebuild:** drop `silver_parsed` and its checkpoint (the volume `checkpoints` in the silver schema) and run. This parses every part again, which is billed per page. Bronze is not touched.
 - **Bronze rebuild:** drop the bronze schema and run. The PDFs are downloaded again (free), and the parts are cut again. Deleting only the tables leaves the Auto Loader checkpoint, so nothing would be reloaded.
 
 ## More documentation
