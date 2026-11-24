@@ -14,8 +14,8 @@ flowchart LR
     F --> E{"Already in the volume<br/>and not empty?"}
     E -- yes --> SK["skip"]
     E -- no --> D["download"]
-    D -- ok --> V[("volume<br/>/Volumes/catalog/bronze_schema/docs/pdfs/")]
-    D -- failed --> FL["logged, reported at the end:<br/>the job fails"]
+    D -- ok --> V[("volume<br/>/Volumes/workspace/finance_bench_bronze/docs/pdfs/")]
+    D -- failed --> FL["the task fails"]
     SK --> V
     V -.->|next task| B[bronze_pdfs]
 ```
@@ -26,9 +26,9 @@ With `--match <regex>` and `--limit <n>` it downloads only a sample: the dev tar
 
 1. Creates the bronze schema and its `docs` volume if they don't exist (`IF NOT EXISTS`).
 2. Lists the PDFs in the repo with one GitHub API call.
-3. Downloads each PDF to `/Volumes/<catalog>/<bronze_schema>/docs/pdfs/`.
-4. Skips any file already in the volume, so reruns are cheap. A rerun that has nothing to do logs `downloaded=0 skipped=<n> failed=0`.
-5. Logs each download as `[i/total] downloaded <name> (<size> MB)`. Failed downloads are logged and reported together at the end, and the job fails.
+3. Downloads each PDF to `/Volumes/workspace/finance_bench_bronze/docs/pdfs/` (the constants at the top of the script).
+4. Skips any file already in the volume, so reruns are cheap.
+5. Logs each download as `[i/total] downloaded <name> (<size> MB)`. A failed download fails the task. Rerun it: the PDFs already downloaded are skipped.
 
 ## Idempotent reload
 
@@ -36,7 +36,7 @@ The load is idempotent: the script was rerun after the first pass had already do
 
 ## Running it
 
-The job `ingest_financebench` is defined in [resources/ingest_job.yml](../../resources/ingest_job.yml). It runs on serverless compute and receives `--catalog` and `--bronze-schema` from the bundle variables in [databricks.yml](../../databricks.yml).
+The job `ingest_financebench` is defined in [resources/ingest_job.yml](../../resources/ingest_job.yml). It runs on serverless compute and receives only `--match` and `--limit`, from the bundle variables `pdf_match` and `pdf_limit` in [databricks.yml](../../databricks.yml).
 
 ```bash
 databricks bundle deploy -t dev

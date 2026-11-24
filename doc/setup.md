@@ -78,20 +78,23 @@ Never commit directly to `master`.
 -- One schema per layer; the jobs create them if they are missing (CREATE SCHEMA below)
 CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_bronze;
 CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_silver;
+CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_gold;
 
 GRANT USE CATALOG ON CATALOG workspace TO `<client-id>`;
 GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
   ON SCHEMA workspace.finance_bench_bronze TO `<client-id>`;
 GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
   ON SCHEMA workspace.finance_bench_silver TO `<client-id>`;
+GRANT USE SCHEMA, CREATE TABLE
+  ON SCHEMA workspace.finance_bench_gold TO `<client-id>`;
 ```
 
-   Dev and prod write to the same schemas (`finance_bench_bronze` and `finance_bench_silver`), so these grants cover both targets. The `download` and `silver_parse` tasks create the schemas on a fresh workspace (`CREATE SCHEMA IF NOT EXISTS`). For that, the service principal also needs `CREATE SCHEMA` on the catalog:
+   Dev and prod write to the same schemas (`finance_bench_bronze`, `finance_bench_silver` and `finance_bench_gold`), so these grants cover both targets. The `download`, `silver_parse` and `gold_chunk` tasks create the schemas on a fresh workspace (`CREATE SCHEMA IF NOT EXISTS`). For that, the service principal also needs `CREATE SCHEMA` on the catalog:
 
    ```sql
    GRANT CREATE SCHEMA ON CATALOG workspace TO `<client-id>`;
    ```
 
-   Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `catalog`, `bronze_schema` or `silver_schema` variables in [databricks.yml](../databricks.yml), change them here too.
+   Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `CATALOG` or schema constants at the top of the notebooks and [download.py](../src/bronze/download.py), change them here too.
 
 5. Protect `master` (Settings > Branches) so changes only land through pull requests.

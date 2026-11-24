@@ -7,12 +7,12 @@ flowchart TD
     V[("volume: pdfs/*.pdf<br/>from the download task")] -->|"bronze_pdfs: Auto Loader, binaryFile,<br/>checkpoint, only new files"| B[("bronze_pdfs<br/>whole PDFs as bytes")]
     B --> T{"bronze_split: does the PDF<br/>already have parts?"}
     T -- yes --> SK["skip: a rerun does nothing"]
-    T -- no --> R{"Can it be read,<br/>and has more than part_pages pages?"}
+    T -- no --> R{"More than PART_PAGES pages?"}
     R -- "yes: cut, one PDF per task,<br/>in parallel" --> P[("bronze_pdf_parts<br/>path, part_no, page_offset, pages, content")]
-    R -- "short, or unreadable:<br/>one part, original bytes" --> P
+    R -- "no: one part, original bytes" --> P
 ```
 
-The code and a step-by-step explanation are in the notebook [src/bronze/bronze_pdfs.ipynb](../../../src/bronze/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and receives `catalog` and `bronze_schema` from the bundle variables in [databricks.yml](../../../databricks.yml).
+The code and a step-by-step explanation are in the notebook [src/bronze/bronze_pdfs.ipynb](../../../src/bronze/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and takes no parameters: the names are constants at the top of the notebook.
 
 ## Table
 
@@ -25,13 +25,13 @@ The code and a step-by-step explanation are in the notebook [src/bronze/bronze_p
 
 ## How it loads
 
-The load is incremental. It uses [Auto Loader](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/) (`cloudFiles`, `binaryFile` format) with `trigger(availableNow=True)`, so each run loads only the PDFs it has not seen, appends them and stops. Auto Loader records processed files in a checkpoint at `/Volumes/<catalog>/<bronze_schema>/docs/_checkpoints/bronze_pdfs`.
+The load is incremental. It uses [Auto Loader](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/) (`cloudFiles`, `binaryFile` format) with `trigger(availableNow=True)`, so each run loads only the PDFs it has not seen, appends them and stops. Auto Loader records processed files in a checkpoint at `/Volumes/workspace/finance_bench_bronze/docs/_checkpoints/bronze_pdfs`.
 
 The first run read and wrote 368 rows, one per PDF, in about 50 seconds on serverless compute.
 
 ## The parts: `bronze_pdf_parts`
 
-Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/bronze/split_pdfs.ipynb](../../../src/bronze/split_pdfs.ipynb), logic in [splitting.py](../../../src/bronze/splitting.py)) cuts every PDF with more than `part_pages` pages (50) into parts and appends them. A PDF with `part_pages` pages or fewer is one part.
+Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/bronze/split_pdfs.ipynb](../../../src/bronze/split_pdfs.ipynb), logic in [splitting.py](../../../src/bronze/splitting.py)) cuts every PDF with more than `PART_PAGES` pages (50) into parts and appends them. A PDF with `PART_PAGES` pages or fewer is one part.
 
 | Column | Meaning |
 | --- | --- |
@@ -44,7 +44,7 @@ Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/bro
 
 **Why parts.** The parser throttles (`Request rate limit exceeded`) on long PDFs and a failed page throws away the whole parse. A 155-page filing lost 27 pages whole and came back complete in four parts. A part that fails is retried alone, at most 50 pages, and the 500-page limit of the parser no longer matters.
 
-Only PDFs without parts are cut, so a rerun does nothing. The cutting is a Spark job with one PDF per task, so the PDFs are cut in parallel on the executors and their bytes never pass through the driver. A PDF that cannot be read is one part with its original bytes, and the parser decides.
+Only PDFs without parts are cut, so a rerun does nothing. The cutting is a Spark job with one PDF per task, so the PDFs are cut in parallel on the executors and their bytes never pass through the driver. A PDF that cannot be read fails the task.
 
 ## Running it
 

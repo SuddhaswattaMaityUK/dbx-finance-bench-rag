@@ -6,24 +6,12 @@ include:
   - resources/*.yml
 
 variables:
-  catalog:
-    description: Unity Catalog catalog name
-    default: workspace
-  bronze_schema:
-    description: Schema of the bronze layer (the volume, bronze_pdfs, bronze_pdf_parts). Dev and prod use the same schemas
-    default: finance_bench_bronze
-  silver_schema:
-    description: Schema of the silver layer (silver_parsed)
-    default: finance_bench_silver
   pdf_match:
     description: Download only the PDFs whose file name matches this regex
     default: ".*"
   pdf_limit:
     description: Download only the first n PDFs (0 = all)
     default: "0"
-  part_pages:
-    description: PDFs with more pages are cut into parts of this size before they are parsed
-    default: "50"
 
 targets:
   # dev: the same schemas as prod (one set of tables, not a copy per target), and a small sample of PDFs.
