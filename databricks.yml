@@ -12,18 +12,6 @@ variables:
   bronze_schema:
     description: Schema of the bronze layer (the volume, bronze_pdfs, bronze_pdf_parts). Dev and prod use the same schemas
     default: finance_bench_bronze
-  silver_schema:
-    description: Schema of the silver layer (parsed parts, the log of failed parses)
-    default: finance_bench_silver
-  gold_schema:
-    description: Schema of the gold layer (chunks, embeddings, retrieval test results)
-    default: finance_bench_gold
-  embedding_endpoint:
-    description: Model endpoint that embeds the chunks and the questions (the same one for both)
-    default: databricks-gte-large-en
-  vector_search_endpoint:
-    description: Vector Search endpoint that test_retrieval creates and deletes again
-    default: financebench_vs
   pdf_match:
     description: Download only the PDFs whose file name matches this regex
     default: ".*"
@@ -31,7 +19,7 @@ variables:
     description: Download only the first n PDFs (0 = all)
     default: "0"
   part_pages:
-    description: PDFs with more pages are cut into parts of this size before they are parsed
+    description: PDFs with more pages are cut into parts of this size before they are parsed (silver)
     default: "50"
 
 targets:
@@ -41,7 +29,6 @@ targets:
     mode: development
     default: true
     variables:
-      vector_search_endpoint: financebench_vs_dev
       pdf_match: EARNINGS
       pdf_limit: "28"
     workspace:
