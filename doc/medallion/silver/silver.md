@@ -1,6 +1,6 @@
 # Silver layer: operations
 
-Silver has its own schema (`finance_bench_silver`, dev `finance_bench_silver_dev`). It reads the parts of the PDFs from bronze (`bronze_pdf_parts`, see [bronze.md](../bronze/bronze.md)), and parses each part. The tables below are in the silver schema.
+Silver has its own schema (`finance_bench_silver`, shared by dev and prod). It reads the parts of the PDFs from bronze (`bronze_pdf_parts`, see [bronze.md](../bronze/bronze.md)), and parses each part. The tables below are in the silver schema.
 
 The design, the stages and the challenges are in the [README](../../../README.md#3-silver-pdfs-to-parsed-elements), and every stage is explained in its notebook in [src/silver/](../../../src/silver/). This page is for **running and looking after** the silver layer.
 

@@ -1,6 +1,6 @@
 # Ingestion, part 2: Bronze layer
 
-The bronze layer has its own schema (`finance_bench_bronze`, dev `finance_bench_bronze_dev`) and two tasks of the `ingest_financebench` job. `bronze_pdfs` runs after [part 1, download](../../download/download.md) and loads the PDFs from the volume into the Delta table `bronze_pdfs`, as is. `bronze_split` then cuts the PDFs of more than 50 pages into parts and stores them in `bronze_pdf_parts`. Nothing is parsed or transformed: the parts are still raw bytes. Silver (parsed plain text) and gold (chunked text) come later.
+The bronze layer has its own schema (`finance_bench_bronze`, shared by dev and prod) and two tasks of the `ingest_financebench` job. `bronze_pdfs` runs after [part 1, download](../../download/download.md) and loads the PDFs from the volume into the Delta table `bronze_pdfs`, as is. `bronze_split` then cuts the PDFs of more than 50 pages into parts and stores them in `bronze_pdf_parts`. Nothing is parsed or transformed: the parts are still raw bytes. Silver (parsed plain text) and gold (chunked text) come later.
 
 ```mermaid
 flowchart TD

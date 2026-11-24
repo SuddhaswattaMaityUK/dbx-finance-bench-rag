@@ -57,19 +57,25 @@ doc/                        setup, one page per layer
 .github/workflows/          deploy-dev, deploy-prod, test
 ```
 
-## Environments: testing never touches prod
+## Environments: dev and prod share the schemas
 
-Each layer has its own schema, and dev and prod use **different schemas**, so tables, the volume and the stream checkpoints are separate. Dev also downloads only 28 short PDFs, so a test run is cheap.
+Each layer has one schema, and dev and prod use the **same** ones, so there is one set of tables instead of a copy per target. Dev downloads only 28 short PDFs, so a dev run is cheap.
 
 | | dev (every push to a branch) | prod (merge to `master`) |
 | --- | --- | --- |
-| Bronze schema | `workspace.finance_bench_bronze_dev` | `workspace.finance_bench_bronze` |
-| Silver schema | `workspace.finance_bench_silver_dev` | `workspace.finance_bench_silver` |
-| Gold schema | `workspace.finance_bench_gold_dev` | `workspace.finance_bench_gold` |
+| Bronze schema | `workspace.finance_bench_bronze` | `workspace.finance_bench_bronze` |
+| Silver schema | `workspace.finance_bench_silver` | `workspace.finance_bench_silver` |
+| Gold schema | `workspace.finance_bench_gold` | `workspace.finance_bench_gold` |
 | Vector Search endpoint (test_retrieval) | `financebench_vs_dev` | `financebench_vs` |
 | PDFs | 28 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
 
-The values are bundle variables in [databricks.yml](databricks.yml). The validation job can also check the prod data from dev without writing to it: run it with the `bronze_schema` and `silver_schema` parameters set to the prod schemas. It only reads.
+The values are bundle variables in [databricks.yml](databricks.yml). Job names and notebooks are still separate per target (dev jobs are prefixed with `[dev <user>]`).
+
+**What sharing means.** A dev run is a real run: it writes to the real tables. Pushing a branch only deploys, and nothing runs until someone runs a job. So:
+
+- Do not run the same job in dev and in prod at the same time. They would parse the same parts twice, and parsing is billed.
+- A branch that changes the chunking or the parsing, once run, leaves its rows next to the old ones. Delete them first, as described in [gold.md](doc/medallion/gold/gold.md#operations).
+- Dev still downloads only 28 PDFs (`pdf_match`, `pdf_limit`), and uses the same `part_pages` as prod.
 
 ## 1. Download
 
@@ -179,7 +185,7 @@ Before the split, 304 PDFs parsed, 55 lost pages to the parser's rate limit and 
 
 **What is validated.** The `validate_silver` job checks that the tables are consistent: every PDF has parts, and every part is parsed or logged. It does **not** check that the elements are right. That was checked once, against the PDFs, on a sample (see above).
 
-**Tested in dev** (own schemas, 28 short earnings releases, cut into parts of 5 pages): 102 of 103 parts parsed, and the validation job passed.
+**Tested in dev** (before dev and prod shared the schemas: own schemas, 28 short earnings releases, cut into parts of 5 pages): 102 of 103 parts parsed, and the validation job passed.
 
 ### Limits and next steps
 
@@ -205,7 +211,7 @@ Silver parameters (notebook widgets, set by the bundle variables):
 | Widget | Task | Default | Meaning |
 | --- | --- | --- | --- |
 | `catalog`, `bronze_schema`, `silver_schema` | all | `workspace`, per layer and target | From the bundle variables |
-| `part_pages` | `bronze_split` | `50` (dev `5`) | PDFs with more pages are cut into parts of this size |
+| `part_pages` | `bronze_split` | `50` | PDFs with more pages are cut into parts of this size |
 | `max_files_per_batch` | `silver_parse` | `2` | Files of parts parsed at once by the stream (one PDF is one file) |
 | `max_attempts` | `silver_retry` | `3` | A part is given up on after this many failed attempts |
 | `retry_pause_seconds` | `silver_retry` | `10` | Pause between retried parts |

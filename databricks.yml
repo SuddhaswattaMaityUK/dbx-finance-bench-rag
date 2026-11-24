@@ -10,10 +10,10 @@ variables:
     description: Unity Catalog catalog name
     default: workspace
   bronze_schema:
-    description: Schema of the bronze layer (the volume, bronze_pdfs, bronze_pdf_parts). Each target has its own, so testing in dev never touches prod data
+    description: Schema of the bronze layer (the volume, bronze_pdfs, bronze_pdf_parts). Dev and prod use the same schemas
     default: finance_bench_bronze
   silver_schema:
-    description: Schema of the silver layer (parsed parts, pages, log, documents)
+    description: Schema of the silver layer (parsed parts, the log of failed parses)
     default: finance_bench_silver
   gold_schema:
     description: Schema of the gold layer (chunks, embeddings, retrieval test results)
@@ -35,18 +35,15 @@ variables:
     default: "50"
 
 targets:
-  # dev: its own schemas, a small sample of short PDFs. Safe to break.
+  # dev: the same schemas as prod (one set of tables, not a copy per target), and a small sample of PDFs.
+  # Pushing a branch only deploys: nothing runs until someone runs a job, and a dev run writes to the real tables.
   dev:
     mode: development
     default: true
     variables:
-      bronze_schema: finance_bench_bronze_dev
-      silver_schema: finance_bench_silver_dev
-      gold_schema: finance_bench_gold_dev
       vector_search_endpoint: financebench_vs_dev
       pdf_match: EARNINGS
       pdf_limit: "28"
-      part_pages: "5"  # the dev PDFs are short: a small part size makes the split run
     workspace:
       host: https://dbc-9551b733-1e19.cloud.databricks.com
 
