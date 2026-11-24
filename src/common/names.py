@@ -38,22 +38,14 @@ class Names:
     def parts(self):
         return self._bronze("bronze_pdf_parts")
 
-    # silver: parsed parts, converted pages, the log and the two views
+    # silver: parsed parts, the log of failed parses and the view of what is still open
     @property
     def parsed(self):
         return self._silver("silver_parsed")
 
     @property
-    def pages(self):
-        return self._silver("silver_pages")
-
-    @property
     def log(self):
         return self._silver("silver_log")
-
-    @property
-    def documents(self):
-        return self._silver("silver_documents")
 
     @property
     def failures(self):
