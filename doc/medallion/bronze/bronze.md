@@ -10,7 +10,6 @@ flowchart TD
     T -- no --> R{"Can it be read,<br/>and has more than part_pages pages?"}
     R -- "yes: cut, one PDF per task,<br/>in parallel" --> P[("bronze_pdf_parts<br/>path, part_no, page_offset, pages, content")]
     R -- "short, or unreadable:<br/>one part, original bytes" --> P
-    P -.->|"read by"| S["silver_parse"]
 ```
 
 The code and a step-by-step explanation are in the notebook [src/bronze/bronze_pdfs.ipynb](../../../src/bronze/bronze_pdfs.ipynb). The task is defined in [resources/ingest_job.yml](../../../resources/ingest_job.yml) and receives `catalog` and `bronze_schema` from the bundle variables in [databricks.yml](../../../databricks.yml).
@@ -32,7 +31,7 @@ The first run read and wrote 368 rows, one per PDF, in about 50 seconds on serve
 
 ## The parts: `bronze_pdf_parts`
 
-Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/bronze/split_pdfs.ipynb](../../../src/bronze/split_pdfs.ipynb), logic in [splitting.py](../../../src/bronze/splitting.py)) cuts every PDF with more than `part_pages` pages (50, dev 5) into parts and appends them. A PDF with `part_pages` pages or fewer is one part.
+The next layer will read this table, never the whole PDFs. The task `bronze_split` ([src/bronze/split_pdfs.ipynb](../../../src/bronze/split_pdfs.ipynb), logic in [splitting.py](../../../src/bronze/splitting.py)) cuts every PDF with more than `part_pages` pages (50) into parts and appends them. A PDF with `part_pages` pages or fewer is one part.
 
 | Column | Meaning |
 | --- | --- |
