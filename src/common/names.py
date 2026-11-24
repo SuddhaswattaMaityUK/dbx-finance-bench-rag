@@ -51,10 +51,6 @@ class Names:
     def failures(self):
         return self._silver("silver_failures")
 
-    @property
-    def parse_checkpoint(self):
-        return f"/Volumes/{self.catalog}/{self.silver_schema}/checkpoints/parse"
-
     # gold: the chunks (children are searched, parents are read by the LLM) and the retrieval test results
     @property
     def children(self):
