@@ -75,20 +75,23 @@ Never commit directly to `master`.
 4. Grant the service principal access to Unity Catalog. Run this once in a SQL editor as the catalog owner (use the service principal's **Application ID** in backticks, not its display name):
 
 ```sql
--- One schema per layer; the jobs create it if it is missing (CREATE SCHEMA below)
+-- One schema per layer; the jobs create them if they are missing (CREATE SCHEMA below)
 CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_bronze;
+CREATE SCHEMA IF NOT EXISTS workspace.finance_bench_silver;
 
 GRANT USE CATALOG ON CATALOG workspace TO `<client-id>`;
 GRANT USE SCHEMA, CREATE VOLUME, CREATE TABLE
   ON SCHEMA workspace.finance_bench_bronze TO `<client-id>`;
+GRANT USE SCHEMA, CREATE TABLE
+  ON SCHEMA workspace.finance_bench_silver TO `<client-id>`;
 ```
 
-   Dev and prod write to the same schema (`finance_bench_bronze`), so these grants cover both targets. The `download` task creates the schema on a fresh workspace (`CREATE SCHEMA IF NOT EXISTS`). For that, the service principal also needs `CREATE SCHEMA` on the catalog:
+   Dev and prod write to the same schemas (`finance_bench_bronze` and `finance_bench_silver`), so these grants cover both targets. The `download` and `silver_parse` tasks create the schemas on a fresh workspace (`CREATE SCHEMA IF NOT EXISTS`). For that, the service principal also needs `CREATE SCHEMA` on the catalog:
 
    ```sql
    GRANT CREATE SCHEMA ON CATALOG workspace TO `<client-id>`;
    ```
 
-   Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `catalog` or `bronze_schema` variables in [databricks.yml](../databricks.yml), change them here too.
+   Without these grants the job fails with `PERMISSION_DENIED ... does not have CREATE SCHEMA` or similar. If you change the `catalog`, `bronze_schema` or `silver_schema` variables in [databricks.yml](../databricks.yml), change them here too.
 
 5. Protect `master` (Settings > Branches) so changes only land through pull requests.

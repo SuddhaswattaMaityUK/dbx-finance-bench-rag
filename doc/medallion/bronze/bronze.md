@@ -31,7 +31,7 @@ The first run read and wrote 368 rows, one per PDF, in about 50 seconds on serve
 
 ## The parts: `bronze_pdf_parts`
 
-The next layer will read this table, never the whole PDFs. The task `bronze_split` ([src/bronze/split_pdfs.ipynb](../../../src/bronze/split_pdfs.ipynb), logic in [splitting.py](../../../src/bronze/splitting.py)) cuts every PDF with more than `part_pages` pages (50) into parts and appends them. A PDF with `part_pages` pages or fewer is one part.
+Silver reads this table, never the whole PDFs. The task `bronze_split` ([src/bronze/split_pdfs.ipynb](../../../src/bronze/split_pdfs.ipynb), logic in [splitting.py](../../../src/bronze/splitting.py)) cuts every PDF with more than `part_pages` pages (50) into parts and appends them. A PDF with `part_pages` pages or fewer is one part.
 
 | Column | Meaning |
 | --- | --- |
