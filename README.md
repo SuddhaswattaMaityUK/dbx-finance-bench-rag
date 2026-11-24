@@ -71,7 +71,7 @@ Details: [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md)
 
 ## 3. Silver: the AI parser
 
-Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so each run only parses new parts), runs `ai_parse_document` on every part and saves the parser's output in `silver_parsed`, one row per part. Only a complete parse is saved (it has elements and no page errors). A part that failed is not saved, and a normal run does not try it again, because the stream has read it once. To parse the failed parts again, run with `retry_failed = true`: the checkpoint is reset, and the parts already saved are skipped. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
+Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so each run only parses new parts), runs `ai_parse_document` on every part and saves the parser's output in `silver_parsed`, one row per part, with the document name (`doc_name`, such as `3M_2018_10K`, from the file name). The notebook creates the catalog and schema, the table and the checkpoint volume if they do not exist. Only a complete parse is saved (it has elements and no page errors). A part that failed is not saved, and a normal run does not try it again, because the stream has read it once. To parse the failed parts again, run with `retry_failed = true`: the checkpoint is reset, and the parts already saved are skipped. The notebook is [src/silver/parse_pdfs.ipynb](src/silver/parse_pdfs.ipynb), and it explains each step.
 
 ## Run it
 
