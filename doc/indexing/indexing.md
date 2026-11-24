@@ -1,52 +1,45 @@
-# Indexing (planned)
+# Indexing and retrieval
 
-Not built yet. This page keeps the idea so the next step starts from a plan.
+What comes after silver. The details are in [gold.md](../medallion/gold/gold.md) and
+[test_retrieval.md](../retrieval/test_retrieval.md).
 
 ## Where it fits
 
 ```mermaid
 flowchart LR
-    subgraph ingestion
-      D[download] --> B["bronze<br/>PDFs, parts"] --> S["silver<br/>Markdown per PDF"]
+    subgraph financebench_pipeline
+      D[download] --> B["bronze<br/>PDFs, parts"] --> S["silver<br/>parsed elements"]
+      S --> V[validation]
+      V --> IX["indexing<br/>chunk (2 strategies), embed"]
     end
-    S --> V[validation]
-    V --> CH["chunking<br/>one table per strategy"]
-    CH --> VS[("vector store<br/>one index per strategy")]
-    VS -.->|later| RT["retrieval and reranker"]
+    IX --> G[("gold_children<br/>gold_parents")]
+    G -.->|"run by hand"| TR["test_retrieval<br/>index, search, score, teardown"]
 ```
 
-All of it runs as tasks of the parent job `financebench_pipeline`.
+- **Input:** `silver_parsed`, the parser's elements. The Markdown of `silver_convert` is not used: the elements
+  already have the headings and the tables, and no model rewrites the numbers.
+- **`indexing`** (in the pipeline): chunks every complete filing with both strategies and embeds the chunks.
+  Everything it writes is kept.
+- **`test_retrieval`** (by hand, one notebook): builds a Vector Search index from the stored vectors, scores the
+  retrievers on FinanceBench, and deletes the index and the endpoint again.
 
-- **Input:** the view `silver_documents`. It only shows PDFs whose pages are all converted, so indexing never sees a half document. Page markers (`<!-- page N -->`) are in the text, so a chunk can keep its page number for citations.
-- **Job:** a separate job, `indexing`, in its own `resources/indexing_job.yml` and `src/indexing/`. It is added to [financebench_pipeline_job.yml](../../resources/financebench_pipeline_job.yml) as the last task. Ingestion is not re-run to try a new chunking: parsing is the expensive part, and it is already stored.
+## Decisions
 
-## Steps
+| Question | Decision |
+| --- | --- |
+| Chunking strategies | `structured` (sections by heading, whole tables, parent-child) and `fixed` (600 tokens, the baseline). One chunk per page was dropped: pages vary a lot in size, cut tables and mix topics |
+| Tables | Two: `gold_children` (searched, both strategies, a `strategy` column) and `gold_parents` (what the LLM reads for structured). Fixed has no parents |
+| Embedding model | `databricks-gte-large-en` (1024 dimensions), on `embed_text`: a prefix line (company, form, year, section) and the child's text |
+| Where the vectors live | In `gold_children.embedding`, filled once per chunk. The index is built from them, so deleting it costs no embedding |
+| Vector Search | One Delta Sync index on `gold_children`, filtered by `strategy` and filing, `TRIGGERED`. Created and deleted by `test_retrieval`, never left running |
+| Retrieval | LangChain: parent-child (search children, return parents) with Vector Search `hybrid`, or an `EnsembleRetriever` of vector and BM25 |
+| Quality measure | FinanceBench: the evidence page in the top k (also the filing, the evidence text, MRR) |
 
-| Step | What | Output |
-| --- | --- | --- |
-| 1. Chunking | Split each document into chunks. Several strategies are tried and compared | A chunks table per strategy, each row keeping `path`, `page_no` and the strategy name |
-| 2. Vector store | Embed the chunks and index them | A Databricks Vector Search index per strategy |
-| 3. Reranker (later) | Re-order the retrieved chunks before they go to the model | Part of the retrieval step, not of indexing |
+## Open
 
-## Chunking strategies to try
-
-Decided later, when we compare them. Candidates:
-
-- Fixed size with overlap (the baseline)
-- By page (the natural unit of silver)
-- By section, using the Markdown headings
-- Table-aware: a table is never split
-
-Each strategy is a task or a job parameter (`chunking_strategy`) and writes its own table, so strategies can be compared on the same questions without touching each other.
-
-## How the strategies will be compared
-
-FinanceBench has questions with reference answers and evidence pages. For each strategy: retrieve for every question, then measure whether the evidence page is in the top k. Details are written when this is built.
-
-## Open decisions
-
-- [ ] Embedding model (a Databricks endpoint)
-- [ ] Vector Search: availability and limits on the free tier
-- [ ] One index per strategy, or one index with a `strategy` column
-- [ ] How to measure retrieval quality (top-k hit on the evidence page)
+- [ ] First runs on dev, then prod (see "Not checked yet" on both pages)
+- [ ] Which strategy and search mode win, from `test_retrieval_results`
+- [ ] Finding the filing from the question (company and year), for questions that do not name it
 - [ ] Reranker: a hosted model or a cross-encoder
+- [ ] Answer quality: the LLM's answer against FinanceBench's
+- [ ] Whether `silver_convert` (the Markdown) is still needed: nothing in gold uses it

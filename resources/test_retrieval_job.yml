@@ -1,0 +1,18 @@
+resources:
+  jobs:
+    test_retrieval:
+      name: test_retrieval
+      # Run by hand (databricks bundle run test_retrieval -t <target>), not in financebench_pipeline: it creates a
+      # Vector Search endpoint, which is billed by the hour, and deletes it again at the end of the run (also when
+      # the run fails). The embeddings in gold_children are never deleted.
+      tasks:
+        - task_key: test_retrieval
+          notebook_task:
+            notebook_path: ../src/retrieval/test_retrieval.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
+              gold_schema: ${var.gold_schema}
+              vector_search_endpoint: ${var.vector_search_endpoint}
+              embedding_endpoint: ${var.embedding_endpoint}

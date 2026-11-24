@@ -1,6 +1,6 @@
 # dbx-finance-bench-rag
 
-A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings: 368 SEC filings (10-Ks, 10-Qs, 8-Ks), most of them 100 to 300 pages long. This repository covers the **ingestion**: getting the PDFs into Delta tables and turning them into clean Markdown text, ready for chunking and retrieval.
+A RAG pipeline on Databricks over the [FinanceBench](https://github.com/patronus-ai/financebench) filings: 368 SEC filings (10-Ks, 10-Qs, 8-Ks), most of them 100 to 300 pages long. This repository covers the **ingestion** (getting the PDFs into Delta tables and parsing them), the **gold layer** (chunks and their embeddings) and a **retrieval test** that scores the retrievers on FinanceBench's questions.
 
 Everything is a Databricks Asset Bundle. Pushing a branch deploys it to `dev`, and merging to `master` deploys it to `prod` (see [doc/setup.md](doc/setup.md#4-cicd-with-github-actions)).
 
@@ -16,7 +16,8 @@ flowchart LR
     L -->|"retry"| P
     P -->|"ai_query<br/>one page at a time"| PG[("silver_pages")]
     PG -->|view| D["silver_documents<br/>one Markdown doc per PDF"]
-    D -.->|next| G[gold: chunks + embeddings]
+    P -->|"chunk: structured, fixed<br/>embed once"| G[("gold_children<br/>gold_parents")]
+    G -.->|"by hand"| R["test_retrieval<br/>index, score, teardown"]
 ```
 
 | Layer | Task | Output | Status |
@@ -25,9 +26,12 @@ flowchart LR
 | Bronze | `bronze_pdfs`, `bronze_split` | Tables `bronze_pdfs` (raw PDF bytes) and `bronze_pdf_parts` (the PDFs cut into parts of up to 50 pages) | Done |
 | Silver | `silver_parse`, `silver_retry`, `silver_convert` | Tables `silver_parsed`, `silver_pages`, `silver_log` and the view `silver_documents`: **Markdown** per PDF | Built and tested in dev. Prod data: 291 of 368 documents complete, the rest waiting (see [results](#results)) |
 | Validation | `validate_silver` (separate job) | A pass or fail check of the tables, and what is still open | Done |
-| Gold | not started | Chunks and embeddings | Next |
+| Gold | `chunk_structured`, `chunk_fixed`, `embed` (job `indexing`) | Tables `gold_children` (searched, with the embeddings) and `gold_parents` (what the LLM reads) | Built and unit-tested, not run on Databricks yet (see [gold.md](doc/medallion/gold/gold.md)) |
+| Retrieval test | `test_retrieval` (separate job, one notebook, run by hand) | Scores in `test_retrieval_results`. Creates the Vector Search index and deletes it again | Built, not run on Databricks yet (see [test_retrieval.md](doc/retrieval/test_retrieval.md)) |
 
-The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`, `silver_retry`, `silver_convert`.
+The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`, `silver_retry`, `silver_convert`. The job `financebench_pipeline` runs ingestion, validation, then `indexing`.
+
+Gold reads the parser's elements in `silver_parsed`, not the Markdown of `silver_convert`: the elements already say what is a heading and what is a table, and no model sits between the filing and the numbers.
 
 Every task is **safe to rerun**: each one remembers what it has already done and only processes what is new.
 
@@ -47,7 +51,10 @@ src/
                             checks.py (checks on parser and model output, plain Python)
                             silver_tables.py (tables and views), parsing.py (parse and file a part)
   validate/                 validate_silver.ipynb
-tests/                      test_checks.py (pytest, no Databricks needed)
+  gold/                     GOLD: chunk_documents.ipynb, embed_chunks.ipynb
+                            elements.py, tables.py, sections.py, text_split.py, chunking.py, gold_tables.py
+  retrieval/                test_retrieval.ipynb (one notebook: index, retrievers, scores, teardown)
+tests/                      test_checks.py, test_gold.py (pytest, no Databricks needed)
 doc/                        setup, one page per layer
 .github/workflows/          deploy-dev, deploy-prod, test
 ```
@@ -60,6 +67,8 @@ Each layer has its own schema, and dev and prod use **different schemas**, so ta
 | --- | --- | --- |
 | Bronze schema | `workspace.finance_bench_bronze_dev` | `workspace.finance_bench_bronze` |
 | Silver schema | `workspace.finance_bench_silver_dev` | `workspace.finance_bench_silver` |
+| Gold schema | `workspace.finance_bench_gold_dev` | `workspace.finance_bench_gold` |
+| Vector Search endpoint (test_retrieval) | `financebench_vs_dev` | `financebench_vs` |
 | PDFs | 28 earnings releases (`pdf_match`, `pdf_limit`) | all 368 |
 
 The values are bundle variables in [databricks.yml](databricks.yml). The validation job can also check the prod data from dev without writing to it: run it with the `bronze_schema` and `silver_schema` parameters set to the prod schemas. It only reads.
@@ -212,7 +221,7 @@ The marker problem (challenge 3) was measured on the first design: 151 of 359 do
 - **Two PDFs have no Markdown:** the INTEL 8-Ks that fail with `Document conversion failed` in the parser. The split made the 8 PDFs over 500 pages parseable.
 - **Changed or deleted PDFs:** not handled. Bronze tracks files by path, and silver keeps rows of deleted files. See [happy_unhappy_path.md](doc/medallion/silver/happy_unhappy_path.md).
 - **Table accuracy** was checked on a sample by eye, not measured.
-- **Next:** a chunker turns `silver_documents` into chunk tables, one per strategy, and a vector store indexes them. See [doc/indexing/indexing.md](doc/indexing/indexing.md).
+- **Next:** gold chunks `silver_parsed` and embeds the chunks (job `indexing`), and `test_retrieval` scores the retrievers. See [doc/indexing/indexing.md](doc/indexing/indexing.md).
 
 ## Run it
 
@@ -220,6 +229,8 @@ The marker problem (challenge 3) was measured on the first design: 151 of 359 do
 databricks bundle deploy -t dev                       # CI does this on every push
 databricks bundle run ingest_financebench -t dev      # download, bronze (load, split), silver (parse, retry, convert)
 databricks bundle run validate_silver -t dev          # check the tables (a separate pipeline)
+databricks bundle run indexing -t dev                 # gold: chunk (both strategies), embed what has no vector
+databricks bundle run test_retrieval -t dev           # by hand: index, FinanceBench scores, teardown (the endpoint is billed hourly)
 python -m pytest                                      # unit tests, no Databricks needed
 ```
 
@@ -251,6 +262,9 @@ To look before you spend, query `silver_failures` (see [silver.md](doc/medallion
 | [doc/medallion/bronze/bronze.md](doc/medallion/bronze/bronze.md) | The bronze table and the Auto Loader load |
 | [doc/medallion/silver/silver.md](doc/medallion/silver/silver.md) | Silver operations: where to look, what to do when something is open |
 | [doc/medallion/silver/happy_unhappy_path.md](doc/medallion/silver/happy_unhappy_path.md) | Edge cases and open decisions for silver |
+| [doc/medallion/gold/gold.md](doc/medallion/gold/gold.md) | The gold layer: chunking strategies, tables, embeddings, operations |
+| [doc/retrieval/test_retrieval.md](doc/retrieval/test_retrieval.md) | The retrieval test notebook: index lifecycle, LangChain retrievers, scores |
+| [doc/indexing/indexing.md](doc/indexing/indexing.md) | Where indexing and retrieval fit, the decisions, what is open |
 | [src/silver/](src/silver/) | The silver notebooks and modules, with an explanation cell for every stage |
 | [src/validate/validate_silver.ipynb](src/validate/validate_silver.ipynb) | The separate validation pipeline: integrity checks on the tables, and what is still open |
-| [tests/test_checks.py](tests/test_checks.py) | Unit tests for the checks |
+| [tests/](tests/) | Unit tests: silver checks and the gold chunker |
