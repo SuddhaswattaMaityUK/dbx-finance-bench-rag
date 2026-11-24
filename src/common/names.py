@@ -1,6 +1,6 @@
-"""Names of the tables, views and paths of the two layers, and the write helper every notebook shares.
+"""Names of the tables, views and paths of the layers, and the write helper every notebook shares.
 
-Bronze and silver have a schema each, so each layer can be granted, dropped or rebuilt on its own.
+Bronze, silver and gold have a schema each, so each layer can be granted, dropped or rebuilt on its own.
 """
 
 from dataclasses import dataclass
@@ -13,6 +13,11 @@ class Names:
     catalog: str
     bronze_schema: str
     silver_schema: str
+    gold_schema: str = ""  # only the gold and retrieval notebooks pass it
+
+    def _gold(self, name):
+        assert self.gold_schema, "Names(...) was built without a gold_schema"
+        return f"{self.catalog}.{self.gold_schema}.{name}"
 
     def _bronze(self, name):
         return f"{self.catalog}.{self.bronze_schema}.{name}"
@@ -57,6 +62,27 @@ class Names:
     @property
     def parse_checkpoint(self):
         return f"/Volumes/{self.catalog}/{self.silver_schema}/checkpoints/parse"
+
+    # gold: the chunks (children are searched, parents are read by the LLM) and the retrieval test results
+    @property
+    def children(self):
+        return self._gold("gold_children")
+
+    @property
+    def parents(self):
+        return self._gold("gold_parents")
+
+    @property
+    def retrieval_results(self):
+        return self._gold("test_retrieval_results")
+
+    @property
+    def tiktoken_cache(self):
+        return f"/Volumes/{self.catalog}/{self.gold_schema}/cache/tiktoken"
+
+    @property
+    def vector_index(self):
+        return self._gold("gold_children_index")
 
 
 def insert_new(spark, df, table, keys):

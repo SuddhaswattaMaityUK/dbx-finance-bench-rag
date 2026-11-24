@@ -1,0 +1,40 @@
+resources:
+  jobs:
+    indexing:
+      name: indexing
+      # Gold: chunk the parsed filings (both strategies at once), then embed the chunks that have no vector yet.
+      # Everything it writes is kept. The Vector Search index is not built here: test_retrieval builds it from the
+      # stored vectors and deletes it again, so nothing is billed by the hour.
+      tasks:
+        - task_key: chunk_structured
+          notebook_task:
+            notebook_path: ../src/gold/chunk_documents.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
+              gold_schema: ${var.gold_schema}
+              strategy: structured
+
+        - task_key: chunk_fixed
+          notebook_task:
+            notebook_path: ../src/gold/chunk_documents.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
+              gold_schema: ${var.gold_schema}
+              strategy: fixed
+
+        - task_key: embed
+          depends_on:
+            - task_key: chunk_structured
+            - task_key: chunk_fixed
+          notebook_task:
+            notebook_path: ../src/gold/embed_chunks.ipynb
+            base_parameters:
+              catalog: ${var.catalog}
+              bronze_schema: ${var.bronze_schema}
+              silver_schema: ${var.silver_schema}
+              gold_schema: ${var.gold_schema}
+              embedding_endpoint: ${var.embedding_endpoint}
