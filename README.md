@@ -36,7 +36,7 @@ resources/
   ingest_job.yml            job ingest_financebench: download, bronze_pdfs, bronze_split
 src/
   bronze/                   BRONZE: download.py, bronze_pdfs.ipynb, split_pdfs.ipynb
-                            splitting.py (cut a PDF into parts), bronze_tables.py (the parts table)
+                            splitting.py (cut a PDF into parts)
 tests/                      test_splitting.py (pytest, no Databricks needed)
 doc/                        setup, one page per step
 .github/workflows/          deploy-dev, deploy-prod, test
