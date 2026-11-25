@@ -44,3 +44,10 @@ resources:
             - task_key: silver_parse
           notebook_task:
             notebook_path: ../src/gold/chunk.ipynb
+
+        # Gold, second step: a vector for every child that has none, or whose text changed. Kept in gold_embeddings.
+        - task_key: gold_embed
+          depends_on:
+            - task_key: gold_chunk
+          notebook_task:
+            notebook_path: ../src/gold/embed.ipynb
