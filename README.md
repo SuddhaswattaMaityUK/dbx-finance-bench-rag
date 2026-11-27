@@ -22,7 +22,7 @@ flowchart LR
 | Download | `download` | PDFs in a Unity Catalog volume | Done |
 | Bronze | `bronze_pdfs`, `bronze_split` | Tables `bronze_pdfs` (raw PDF bytes) and `bronze_pdf_parts` (the PDFs cut into parts of up to 50 pages) | Done |
 | Silver | `silver_parse` | Table `silver_parsed`: the parser's elements (headings, text, tables as HTML, each with its page) for every part | Written, not run on Databricks yet |
-| Gold | `gold_chunk`, `gold_embed` | Tables `gold_parents` (one per section), `gold_children` (pieces of about 2,000 characters, and one per table) and `gold_embeddings` (each child with its vector) | Written, not run on Databricks yet |
+| Gold | `gold_chunk`, `gold_embed` | Tables `gold_parents` (one per section), `gold_children` (pieces of about 2,000 characters, and tables, cut into groups of rows when large) and `gold_embeddings` (each child with its vector) | Written, not run on Databricks yet |
 | Retrieval | | Search over the chunks, and a score on FinanceBench's questions | Not started |
 
 The tasks run in this order in the job `ingest_financebench`: `download`, `bronze_pdfs`, `bronze_split`, `silver_parse`, `gold_chunk`, `gold_embed`.
@@ -79,7 +79,7 @@ Reads `bronze_pdf_parts` as a stream (a checkpoint remembers what was read, so e
 
 ## 4. Gold: parent-child chunks
 
-Cuts the parsed elements into **parents** and **children**. A parent is a section: a new one starts at every title or section header, and it holds the section's text, tables and figure descriptions (page headers, footers and page numbers are dropped). It is what the LLM reads. The children are what is embedded and searched: the section's text cut by LangChain's `RecursiveCharacterTextSplitter` (about 2,000 characters, 200 overlap) in a pandas UDF, plus one child per table, never cut. Each child starts with its document and section header and keeps its `parent_id` and pages. It is a stream on `silver_parsed`: a run takes the parts that are new since the last run, chunks their documents again from all their parts (a section can cross parts) and replaces only those documents' rows in `gold_parents` and `gold_children`. The notebook is [src/gold/chunk.ipynb](src/gold/chunk.ipynb).
+Cuts the parsed elements into **parents** and **children**. A parent is a section: a new one starts at every title or section header, and it holds the section's text, tables and figure descriptions (page headers, footers and page numbers are dropped). It is what the LLM reads. The children are what is embedded and searched: the section's text cut by LangChain's `RecursiveCharacterTextSplitter` (about 2,000 characters, 200 overlap) in a pandas UDF, plus the tables. A table of up to 4,000 characters (`TABLE_CHUNK_SIZE`) is one child; a bigger one is cut between rows into groups, each repeating the table's header rows, by a small BeautifulSoup UDF (LangChain's HTML splitters either keep a table whole or cut it in the middle of a row). Each child starts with its document and section header and keeps its `parent_id` and pages. It is a stream on `silver_parsed`: a run takes the parts that are new since the last run, chunks their documents again from all their parts (a section can cross parts) and replaces only those documents' rows in `gold_parents` and `gold_children`. The notebook is [src/gold/chunk.ipynb](src/gold/chunk.ipynb).
 
 ## 5. Gold: embeddings
 
@@ -103,6 +103,7 @@ Failures are not handled: a download, a PDF that cannot be cut or a parse that f
 
 - **Rerun or redeploy:** safe. Files already downloaded, loaded, cut or parsed are skipped.
 - **Gold rebuild:** drop `gold_parents`, `gold_children` and the volume `checkpoints` in the gold schema, and run. Nothing is parsed again, and a child whose text is the same keeps its vector in `gold_embeddings`.
+- **Re-chunk after a change to the chunking** (with the same columns): delete only the folder `checkpoints/chunk` in the gold schema's volume, and run. `gold_chunk` reads all of `silver_parsed` again and replaces every document's rows; `gold_embed` deletes the vectors of children that changed and embeds the new ones. If the columns change, drop `gold_parents` and `gold_children` too.
 - **Embed again** (another model, say): drop `gold_embeddings` and run. Every child is embedded again, which is billed.
 - **Silver rebuild:** drop `silver_parsed` and its checkpoint (the volume `checkpoints` in the silver schema) and run. This parses every part again, which is billed per page. Bronze is not touched.
 - **Bronze rebuild:** drop the bronze schema and run. The PDFs are downloaded again (free), and the parts are cut again. Deleting only the tables leaves the Auto Loader checkpoint, so nothing would be reloaded.
